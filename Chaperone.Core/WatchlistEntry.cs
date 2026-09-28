@@ -16,11 +16,13 @@ public sealed class WatchlistEntry
 
     public bool Matches(string name, uint worldId, ulong contentId)
     {
-        if (contentId != 0 && this.ContentId != 0 && contentId == this.ContentId)
+        // When both content ids are known (non-zero), use that as the definitive check
+        if (contentId != 0 && this.ContentId != 0)
         {
-            return true;
+            return contentId == this.ContentId;
         }
 
+        // Otherwise fall back to name+world matching
         return worldId == this.WorldId && string.Equals(name, this.Name, StringComparison.OrdinalIgnoreCase);
     }
 }

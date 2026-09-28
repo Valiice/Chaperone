@@ -46,6 +46,7 @@ public class WatchedNameTests
         Assert.True(entry.Matches("some body", 33, 0));
         Assert.False(entry.Matches("Some Body", 34, 0));
         entry.ContentId = 777;
+        Assert.False(entry.Matches("Some Body", 33, 888));
         Assert.True(entry.Matches("Renamed Person", 34, 777));
         Assert.True(entry.Matches("Some Body", 33, 0));
     }
