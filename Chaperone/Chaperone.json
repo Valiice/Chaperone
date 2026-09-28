@@ -1,0 +1,10 @@
+{
+  "Name": "Chaperone",
+  "InternalName": "Chaperone",
+  "Author": "Vali",
+  "Punchline": "See who is targeting your friends.",
+  "Description": "Keep a watchlist of players and see who is targeting them, PeepingTom style. Alerts you in chat, with a sound, when someone keeps a watched friend (or the player you are targeting) targeted for longer than a threshold. Party, alliance, friends and free company members are ignored by default.",
+  "ApplicableVersion": "any",
+  "RepoUrl": "",
+  "Tags": ["targeting", "utility", "social"]
+}

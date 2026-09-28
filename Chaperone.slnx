@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="Chaperone.Core/Chaperone.Core.csproj" />
+  <Project Path="Chaperone.Tests/Chaperone.Tests.csproj" />
+  <Project Path="Chaperone/Chaperone.csproj" />
+</Solution>
