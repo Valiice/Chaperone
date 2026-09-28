@@ -22,7 +22,7 @@ public sealed class AlertDispatcher
     public void Raise(AlertEvent alert)
     {
         var targeterWorld = this.worlds.WorldName(alert.TargeterWorldId);
-        Services.Log.Information($"Chaperone: {alert.TargeterName}@{targeterWorld} is targeting {alert.SubjectName} ({alert.DwellSeconds:0.0}s)");
+        Services.Log.Debug($"Chaperone: {alert.TargeterName}@{targeterWorld} is targeting {alert.SubjectName} ({alert.DwellSeconds:0.0}s)");
 
         if (this.config.ChatAlerts)
         {

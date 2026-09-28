@@ -156,6 +156,15 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         if (this.config.Watchlist.Count == 0 && localTargetId == 0)
         {
             this.GateReason = "idle: nothing to watch";
+
+            // The engine does not run while idle, so clear the last frame rather than leave a
+            // frozen subject in the window, markers and server bar. An empty watchlist has no
+            // history worth keeping.
+            if (this.engine.Frame.Subjects.Count > 0 || this.engine.Frame.LivePairs > 0)
+            {
+                this.engine.Reset();
+            }
+
             return;
         }
 
@@ -241,7 +250,18 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         var alerts = this.engine.Frame.Alerts;
         for (var i = 0; i < alerts.Count; i++)
         {
-            this.onAlert(alerts[i]);
+            // One bad alert must neither skip the rest nor count toward the sampler's failure stop.
+            try
+            {
+                this.onAlert(alerts[i]);
+            }
+            catch (Exception e)
+            {
+                if (this.loggedErrors.Add(e.Message))
+                {
+                    Services.Log.Error(e, "Chaperone: alert delivery failed");
+                }
+            }
         }
 
         this.TotalStats.Record(nowMs, Stopwatch.GetElapsedTime(started).TotalMicroseconds);
