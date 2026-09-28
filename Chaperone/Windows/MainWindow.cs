@@ -47,6 +47,8 @@ public sealed class MainWindow : Window
 
     public void ApplyConfig() => this.RespectCloseHotkey = this.config.CloseWithEscape;
 
+    public override void OnClose() => this.RestoreFocus(false);
+
     public override bool DrawConditions()
     {
         if (this.config.HideInCombat && Services.Condition[ConditionFlag.InCombat]) return false;
@@ -75,6 +77,7 @@ public sealed class MainWindow : Window
         {
             ImGui.TextDisabled("Nothing to watch.");
             ImGui.TextDisabled("Add friends in settings, or target someone.");
+            this.RestoreFocus(false);
             return;
         }
 
