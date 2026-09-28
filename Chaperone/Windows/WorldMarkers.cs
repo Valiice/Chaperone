@@ -1,6 +1,7 @@
 using System.Numerics;
 using Chaperone.Core;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Interface.Utility;
 
@@ -9,6 +10,13 @@ namespace Chaperone.Windows;
 /// <summary>Circles on the background draw list at each live targeter and each nearby watched friend. Off by default.</summary>
 public sealed class WorldMarkers : IDisposable
 {
+    private static readonly ConditionFlag[] CutsceneConditions =
+    [
+        ConditionFlag.WatchingCutscene,
+        ConditionFlag.WatchingCutscene78,
+        ConditionFlag.OccupiedInCutSceneEvent,
+    ];
+
     private readonly Configuration config;
     private readonly ChaperoneEngine engine;
 
@@ -29,6 +37,11 @@ public sealed class WorldMarkers : IDisposable
         }
 
         if (!Services.ClientState.IsLoggedIn || (this.config.PauseInPvp && Services.ClientState.IsPvP))
+        {
+            return;
+        }
+
+        if (Services.ClientState.IsGPosing || Services.Condition.Any(CutsceneConditions))
         {
             return;
         }

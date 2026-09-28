@@ -21,6 +21,20 @@ public sealed class MainWindow : Window
 {
     private static readonly Vector4 Red = new(1f, 0.35f, 0.35f, 1f);
 
+    private static readonly ConditionFlag[] DutyConditions =
+    [
+        ConditionFlag.BoundByDuty,
+        ConditionFlag.BoundByDuty56,
+        ConditionFlag.BoundByDuty95,
+    ];
+
+    private static readonly ConditionFlag[] CutsceneConditions =
+    [
+        ConditionFlag.WatchingCutscene,
+        ConditionFlag.WatchingCutscene78,
+        ConditionFlag.OccupiedInCutSceneEvent,
+    ];
+
     private readonly Configuration config;
     private readonly ChaperoneEngine engine;
     private readonly ObjectTableSampler sampler;
@@ -51,9 +65,16 @@ public sealed class MainWindow : Window
 
     public override bool DrawConditions()
     {
-        if (this.config.HideInCombat && Services.Condition[ConditionFlag.InCombat]) return false;
-        if (this.config.HideInDuty && Services.Condition.Any(ConditionFlag.BoundByDuty, ConditionFlag.BoundByDuty56, ConditionFlag.BoundByDuty95)) return false;
-        if (Services.Condition.Any(ConditionFlag.WatchingCutscene, ConditionFlag.WatchingCutscene78, ConditionFlag.OccupiedInCutSceneEvent)) return false;
+        // Draw stops being called while hidden, so a row hovered at that moment would leave the
+        // focus target pinned; restore it on the way out.
+        if ((this.config.HideInCombat && Services.Condition[ConditionFlag.InCombat])
+            || (this.config.HideInDuty && Services.Condition.Any(DutyConditions))
+            || Services.Condition.Any(CutsceneConditions))
+        {
+            this.RestoreFocus(false);
+            return false;
+        }
+
         return true;
     }
 
@@ -85,9 +106,18 @@ public sealed class MainWindow : Window
         var anyHovered = false;
         if (ImGui.BeginListBox("##chaperoneList", new Vector2(-1, height)))
         {
-            for (var s = 0; s < frame.Subjects.Count; s++)
+            // Nearby subjects first, then friends not currently loaded, greyed, at the bottom.
+            for (var pass = 0; pass < 2; pass++)
             {
-                this.DrawSubject(frame.Subjects[s], frame.NowMs, ref anyHovered);
+                var nearby = pass == 0;
+                for (var s = 0; s < frame.Subjects.Count; s++)
+                {
+                    var view = frame.Subjects[s];
+                    if (view.IsNearby == nearby)
+                    {
+                        this.DrawSubject(view, frame.NowMs, ref anyHovered);
+                    }
+                }
             }
 
             ImGui.EndListBox();
@@ -98,7 +128,15 @@ public sealed class MainWindow : Window
 
     private void DrawSubject(SubjectView view, long nowMs, ref bool anyHovered)
     {
-        ImGui.TextUnformatted(view.Name);
+        if (view.IsNearby)
+        {
+            ImGui.TextUnformatted(view.Name);
+        }
+        else
+        {
+            ImGui.TextDisabled(view.Name);
+        }
+
         if (view.IsCurrentTarget)
         {
             ImGui.SameLine();
