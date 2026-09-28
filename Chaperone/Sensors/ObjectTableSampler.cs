@@ -19,6 +19,15 @@ public sealed unsafe class ObjectTableSampler : IDisposable
     private const ulong NoTargetObjectId = 0xE0000000;
     private const int MaxConsecutiveFailures = 5;
 
+    private static readonly ConditionFlag[] PauseConditions =
+    [
+        ConditionFlag.BetweenAreas,
+        ConditionFlag.BetweenAreas51,
+        ConditionFlag.WatchingCutscene,
+        ConditionFlag.WatchingCutscene78,
+        ConditionFlag.OccupiedInCutSceneEvent,
+    ];
+
     private readonly Configuration config;
     private readonly ChaperoneEngine engine;
     private readonly Action<AlertEvent> onAlert;
@@ -123,12 +132,7 @@ public sealed unsafe class ObjectTableSampler : IDisposable
             return;
         }
 
-        if (Services.Condition.Any(
-                ConditionFlag.BetweenAreas,
-                ConditionFlag.BetweenAreas51,
-                ConditionFlag.WatchingCutscene,
-                ConditionFlag.WatchingCutscene78,
-                ConditionFlag.OccupiedInCutSceneEvent))
+        if (Services.Condition.Any(PauseConditions))
         {
             this.GateReason = "loading or cutscene";
             return;
@@ -168,6 +172,8 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         this.snapshot.LocalTargetId = localTargetId;
         this.names.BeginPoll();
         this.DebugMismatchCount = 0;
+        this.DebugTargetHardId = 0;
+        this.DebugTargetLookAtId = 0;
 
         foreach (var obj in Services.ObjectTable.PlayerObjects)
         {
@@ -189,9 +195,8 @@ public sealed unsafe class ObjectTableSampler : IDisposable
             o.HomeWorldId = chara->HomeWorld;
             o.Name = this.names.Get(pc);
 
-            var hard = (ulong)chara->TargetId;
-            o.HardTargetId = hard == 0 || (hard & 0xFFFF_FFFF) == NoTargetObjectId ? 0 : hard;
-            o.LookAtTargetId = pc.TargetObjectId;
+            o.HardTargetId = NormalizeTargetId((ulong)chara->TargetId);
+            o.LookAtTargetId = NormalizeTargetId(pc.TargetObjectId);
             if (o.HardTargetId != o.LookAtTargetId)
             {
                 this.DebugMismatchCount++;
@@ -241,4 +246,7 @@ public sealed unsafe class ObjectTableSampler : IDisposable
 
         this.TotalStats.Record(nowMs, Stopwatch.GetElapsedTime(started).TotalMicroseconds);
     }
+
+    /// <summary>"No target" is 0xE0000000 in the hard target field and 0 in the look-at field; both fold to 0.</summary>
+    private static ulong NormalizeTargetId(ulong id) => id == 0 || (id & 0xFFFF_FFFF) == NoTargetObjectId ? 0 : id;
 }
