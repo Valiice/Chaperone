@@ -260,4 +260,58 @@ public class ChaperoneEngineTests
         var after = GC.GetAllocatedBytesForCurrentThread();
         Assert.Equal(0, after - before);
     }
+
+    [Fact]
+    public void WatchingTheCurrentTargetPreservesLivePairsAndHistory()
+    {
+        var engine = Engine(threshold: 2);
+        var list = new List<WatchlistEntry>();
+        var snap = new Snapshot();
+        var alertCount = 0;
+
+        // Person A (content id 41) is the current, unwatched target; a stranger targets them long
+        // enough to alert once.
+        for (long t = 0; t <= 3000; t += 1000)
+        {
+            Fill(snap, t, localTarget: 40);
+            Add(snap, 40, "Person A", 5, contentId: 41);
+            Add(snap, 30, "Some Stranger", 7, target: 40);
+            engine.Poll(snap, list);
+            alertCount += engine.Frame.Alerts.Count;
+        }
+
+        Assert.Equal(1, alertCount);
+        var before = Assert.Single(engine.Frame.Subjects);
+        Assert.True(before.IsCurrentTarget);
+        Assert.False(before.IsWatched);
+        var dwellBeforeWatch = Assert.Single(before.Live).DwellSeconds;
+
+        // Add Person A to the watchlist while still targeted. The transient subject must become
+        // the watched one in place: same live pair, same dwell, no re-alert.
+        list.Add(Entry("Person A", 5, 41));
+        Fill(snap, 3200, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.True(view.IsWatched);
+        Assert.True(view.IsCurrentTarget);
+        Assert.Empty(engine.Frame.Alerts);
+        var row = Assert.Single(view.Live);
+        Assert.Equal("Some Stranger", row.Name);
+        Assert.True(row.DwellSeconds > dwellBeforeWatch);
+        Assert.Equal(1, engine.Frame.LivePairs);
+
+        // Keep polling: dwell keeps accumulating on the same pair and the friend never re-alerts.
+        Fill(snap, 3400, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+
+        view = Assert.Single(engine.Frame.Subjects);
+        row = Assert.Single(view.Live);
+        Assert.Equal(3.4, row.DwellSeconds, 3);
+        Assert.Empty(engine.Frame.Alerts);
+    }
 }

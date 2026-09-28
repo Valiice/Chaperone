@@ -58,4 +58,15 @@ public class HistoryBufferTests
         h.Push(Subject, Entry(1, 10), 0);
         Assert.Empty(h.For(Subject));
     }
+
+    [Fact]
+    public void ForgetRemovesSubjectAndPushStillWorks()
+    {
+        var h = new HistoryBuffer();
+        h.Push(Subject, Entry(1, 10), 5);
+        h.Forget(Subject);
+        Assert.Empty(h.For(Subject));
+        h.Push(Subject, Entry(2, 20), 5);
+        Assert.Single(h.For(Subject));
+    }
 }

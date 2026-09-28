@@ -49,6 +49,7 @@ public sealed class ChaperoneEngine
         frame.NowMs = now;
         frame.LoadedPlayers = snap.Count;
 
+        this.ClearLiveRows();
         this.IndexSnapshot(snap);
         this.ResolveWatchedSubjects(snap, watchlist);
         this.ResolveCurrentTarget(snap);
@@ -79,8 +80,22 @@ public sealed class ChaperoneEngine
     {
         this.tracker.EndSubject(subject, this.ended);
         this.ReleaseEnded();
-        this.history.Clear(subject);
+        this.history.Forget(subject);
         this.viewsByKey.Remove(subject);
+    }
+
+    /// <summary>
+    /// Clears every known view's row list, not just this poll's Frame.Subjects. A watchlist entry
+    /// disabled while its pairs are still live is skipped by ResolveWatchedSubjects and so never
+    /// reaches its own Live.Clear() below; without this, FillRows would keep appending rows to
+    /// that orphaned view every poll until it grows without bound.
+    /// </summary>
+    private void ClearLiveRows()
+    {
+        foreach (var view in this.viewsByKey.Values)
+        {
+            view.Live.Clear();
+        }
     }
 
     private void IndexSnapshot(Snapshot snap)
@@ -177,10 +192,21 @@ public sealed class ChaperoneEngine
         {
             if (!this.CurrentTargetKey.IsNone)
             {
-                this.tracker.EndSubject(this.CurrentTargetKey, this.ended);
-                this.ReleaseEnded();
-                this.history.Clear(this.CurrentTargetKey);
-                this.viewsByKey.Remove(this.CurrentTargetKey);
+                // A watched entry may have claimed this key this poll (the player was just added
+                // to the watchlist, or the watchlist entry just learned this player's content id
+                // and it happens to match). Its live pairs and history are not ours to end, and
+                // its view (found under this same key) must not be removed.
+                if (!this.watchedKeys.Contains(this.CurrentTargetKey))
+                {
+                    this.tracker.EndSubject(this.CurrentTargetKey, this.ended);
+                    this.ReleaseEnded();
+                    this.history.Forget(this.CurrentTargetKey);
+                }
+
+                if (this.viewsByKey.TryGetValue(this.CurrentTargetKey, out var oldView) && ReferenceEquals(oldView, this.transientView))
+                {
+                    this.viewsByKey.Remove(this.CurrentTargetKey);
+                }
             }
 
             this.CurrentTargetKey = targetKey;
@@ -317,7 +343,12 @@ public sealed class ChaperoneEngine
 
     private SubjectView GetView(PlayerKey key)
     {
-        if (!this.viewsByKey.TryGetValue(key, out var view))
+        // The shared transientView must never become a watched entry's own view: it is mutated
+        // and reused for whatever the current unwatched target is next poll, and ResolveCurrentTarget
+        // identifies "still the transient view" by reference. A watched entry that found it under
+        // its key (the player was the current target and just got added to the watchlist, or vice
+        // versa) gets a fresh, permanent view instead.
+        if (!this.viewsByKey.TryGetValue(key, out var view) || ReferenceEquals(view, this.transientView))
         {
             view = new SubjectView { Key = key };
             this.viewsByKey[key] = view;

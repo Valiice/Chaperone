@@ -7,8 +7,8 @@ public sealed class AlertPolicy
 
     public static bool PassesFilters(PairState pair, PolicySettings s)
     {
-        // Bitwise checks, not Enum.HasFlag: HasFlag boxes both the receiver and the argument on
-        // every call (still true as of .NET 10), which would allocate on this per-poll path.
+        // Bitwise checks, not Enum.HasFlag: HasFlag boxes both the receiver and the argument in
+        // unoptimized (Tier0/Debug) code, which the zero-allocation test runs under.
         if (s.IgnoreParty && (pair.Flags & ObservationFlags.Party) != 0) return false;
         if (s.IgnoreAlliance && (pair.Flags & ObservationFlags.Alliance) != 0) return false;
         if (s.IgnoreFriends && (pair.Flags & ObservationFlags.Friend) != 0) return false;

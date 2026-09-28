@@ -38,6 +38,12 @@ public sealed class HistoryBuffer
         }
     }
 
+    /// <summary>Drops the subject entirely, unlike <see cref="Clear"/> which leaves an empty list
+    /// behind. Use this for a subject that will never be looked up again, so the dictionary does
+    /// not grow without bound over a session (every transient current-target, every forgotten
+    /// watched friend).</summary>
+    public void Forget(PlayerKey subject) => this.bySubject.Remove(subject);
+
     public void ClearAll()
     {
         foreach (var list in this.bySubject.Values)
