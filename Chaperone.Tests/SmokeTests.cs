@@ -7,6 +7,6 @@ public class SmokeTests
     [Fact]
     public void CoreAssemblyLoads()
     {
-        Assert.NotNull(typeof(Core.Marker).Assembly);
+        Assert.NotNull(typeof(Core.PlayerKey).Assembly);
     }
 }
