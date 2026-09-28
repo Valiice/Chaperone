@@ -15,7 +15,7 @@ public class PairTrackerTests
         foreach (var now in new long[] { 0, 200, 400 })
         {
             t.BeginPoll();
-            t.Observe(Key, now);
+            t.Observe(Key, now, 1500);
             t.EndPoll(now, 1500, ended);
         }
 
@@ -29,8 +29,8 @@ public class PairTrackerTests
     {
         var t = new PairTracker();
         var ended = new List<PairState>();
-        t.BeginPoll(); t.Observe(Key, 0); t.EndPoll(0, 1500, ended);
-        t.BeginPoll(); t.Observe(Key, 200); t.EndPoll(200, 1500, ended);
+        t.BeginPoll(); t.Observe(Key, 0, 1500); t.EndPoll(0, 1500, ended);
+        t.BeginPoll(); t.Observe(Key, 200, 1500); t.EndPoll(200, 1500, ended);
         // Not observed at 400..1400.
         foreach (var now in new long[] { 400, 600, 800, 1000, 1200, 1400 })
         {
@@ -41,7 +41,7 @@ public class PairTrackerTests
         Assert.Empty(ended);
         Assert.Single(t.Live);
 
-        t.BeginPoll(); t.Observe(Key, 1600); t.EndPoll(1600, 1500, ended);
+        t.BeginPoll(); t.Observe(Key, 1600, 1500); t.EndPoll(1600, 1500, ended);
         Assert.Equal(1.6, t.Live[Key].DwellSeconds, 3);
     }
 
@@ -50,7 +50,7 @@ public class PairTrackerTests
     {
         var t = new PairTracker();
         var ended = new List<PairState>();
-        t.BeginPoll(); t.Observe(Key, 0); t.EndPoll(0, 1500, ended);
+        t.BeginPoll(); t.Observe(Key, 0, 1500); t.EndPoll(0, 1500, ended);
         t.BeginPoll(); t.EndPoll(1500, 1500, ended);
         Assert.Empty(ended);
         t.BeginPoll(); t.EndPoll(1501, 1500, ended);
@@ -67,9 +67,9 @@ public class PairTrackerTests
         var subjectA = PlayerKey.FromContentId(10);
         var subjectB = PlayerKey.FromContentId(11);
         t.BeginPoll();
-        t.Observe(new PairKey(PlayerKey.FromContentId(1), subjectA), 0);
-        t.Observe(new PairKey(PlayerKey.FromContentId(2), subjectA), 0);
-        t.Observe(new PairKey(PlayerKey.FromContentId(3), subjectB), 0);
+        t.Observe(new PairKey(PlayerKey.FromContentId(1), subjectA), 0, 1500);
+        t.Observe(new PairKey(PlayerKey.FromContentId(2), subjectA), 0, 1500);
+        t.Observe(new PairKey(PlayerKey.FromContentId(3), subjectB), 0, 1500);
         t.EndPoll(0, 1500, ended);
 
         t.EndSubject(subjectA, ended);
@@ -82,16 +82,33 @@ public class PairTrackerTests
     {
         var t = new PairTracker();
         var ended = new List<PairState>();
-        t.BeginPoll(); var first = t.Observe(Key, 0); t.EndPoll(0, 100, ended);
+        t.BeginPoll(); var first = t.Observe(Key, 0, 100); t.EndPoll(0, 100, ended);
         t.BeginPoll(); t.EndPoll(500, 100, ended);
         Assert.Same(first, ended[0]);
         t.Release(ended[0]);
         ended.Clear();
 
-        t.BeginPoll(); var second = t.Observe(Key, 1000); t.EndPoll(1000, 100, ended);
+        t.BeginPoll(); var second = t.Observe(Key, 1000, 100); t.EndPoll(1000, 100, ended);
         Assert.Same(first, second);
         Assert.Equal(0, second.DwellSeconds);
         Assert.False(second.Alerted);
         Assert.Equal(1000, second.StartedMs);
+    }
+
+    [Fact]
+    public void ObservedAfterGatedGapRestartsInPlace()
+    {
+        // Polling was gated between 0 and 10_000, so EndPoll never ran to end the pair.
+        var t = new PairTracker();
+        t.BeginPoll();
+        var first = t.Observe(Key, 0, 1500);
+        t.BeginPoll();
+        var second = t.Observe(Key, 10_000, 1500);
+
+        Assert.Same(first, second);
+        Assert.Same(second, t.Live[Key]);
+        Assert.Equal(0, second.DwellSeconds);
+        Assert.Equal(10_000, second.StartedMs);
+        Assert.Equal(10_000, second.LastSeenMs);
     }
 }

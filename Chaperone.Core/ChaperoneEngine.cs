@@ -18,6 +18,11 @@ public sealed class ChaperoneEngine
     private readonly Dictionary<PlayerKey, SubjectView> viewsByKey = new();
     private readonly HashSet<PlayerKey> watchedKeys = new();
     private readonly List<PairState> ended = new();
+
+    // Last alert time per pair, kept after the pair itself ends so a targeter who drops target
+    // briefly and comes back still honours the pair cooldown. Pruned once the cooldown has passed.
+    private readonly Dictionary<PairKey, long> lastAlertByPair = new();
+    private readonly List<PairKey> pruneScratch = new();
     private readonly SubjectView transientView = new();
 
     // The sampler owns exactly one Snapshot and refills it in place, so holding the reference
@@ -67,6 +72,7 @@ public sealed class ChaperoneEngine
         this.tracker.Clear();
         this.history.ClearAll();
         this.policy.Reset();
+        this.lastAlertByPair.Clear();
         this.viewsByKey.Clear();
         this.subjectsByObject.Clear();
         this.CurrentTargetKey = PlayerKey.None;
@@ -149,7 +155,7 @@ public sealed class ChaperoneEngine
                     this.Frame.WatchlistChanged = true;
                     this.tracker.EndSubject(key, this.ended);
                     this.ReleaseEnded();
-                    this.history.Clear(key);
+                    this.history.Forget(key);
                     this.viewsByKey.Remove(key);
                     key = entry.Key;
                     this.viewsByKey[key] = view;
@@ -257,7 +263,7 @@ public sealed class ChaperoneEngine
             }
 
             var targeterKey = PlayerKey.FromName(o.Name, o.HomeWorldId);
-            var pair = this.tracker.Observe(new PairKey(targeterKey, view.Key), now);
+            var pair = this.tracker.Observe(new PairKey(targeterKey, view.Key), now, this.Settings.GraceMs);
             pair.TargeterName = o.Name;
             pair.TargeterWorldId = o.HomeWorldId;
             pair.TargeterGameObjectId = o.GameObjectId;
@@ -268,11 +274,19 @@ public sealed class ChaperoneEngine
             {
                 // A returning targeter leaves history and becomes live again.
                 this.history.Remove(view.Key, targeterKey);
+
+                // The pair may have ended and restarted within its cooldown; carry the last alert over.
+                if (this.lastAlertByPair.TryGetValue(pair.Key, out var lastAlertMs))
+                {
+                    pair.Alerted = true;
+                    pair.LastAlertMs = lastAlertMs;
+                }
             }
 
             if (this.policy.ShouldAlert(pair, settings, now))
             {
                 this.policy.MarkAlerted(pair, now);
+                this.lastAlertByPair[pair.Key] = now;
                 this.Frame.Alerts.Add(new AlertEvent(
                     targeterKey, o.Name, o.HomeWorldId, view.Key, view.Name, view.WorldId, pair.DwellSeconds));
             }
@@ -292,6 +306,30 @@ public sealed class ChaperoneEngine
         }
 
         this.ReleaseEnded();
+        this.PruneCooldowns(now);
+    }
+
+    private void PruneCooldowns(long now)
+    {
+        if (this.lastAlertByPair.Count == 0)
+        {
+            return;
+        }
+
+        var cooldownMs = this.Settings.Policy.PairCooldownSeconds * 1000L;
+        this.pruneScratch.Clear();
+        foreach (var (key, alertedMs) in this.lastAlertByPair)
+        {
+            if (now - alertedMs >= cooldownMs)
+            {
+                this.pruneScratch.Add(key);
+            }
+        }
+
+        for (var i = 0; i < this.pruneScratch.Count; i++)
+        {
+            this.lastAlertByPair.Remove(this.pruneScratch[i]);
+        }
     }
 
     private void FillRows()

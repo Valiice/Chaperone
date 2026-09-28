@@ -9,7 +9,7 @@ public class AlertPolicyTests
     {
         var tracker = new PairTracker();
         tracker.BeginPoll();
-        var state = tracker.Observe(new PairKey(PlayerKey.FromContentId(1), PlayerKey.FromContentId(2)), 0);
+        var state = tracker.Observe(new PairKey(PlayerKey.FromContentId(1), PlayerKey.FromContentId(2)), 0, 1500);
         state.DwellSeconds = dwell;
         state.Flags = flags;
         state.TargeterIsWatched = watched;

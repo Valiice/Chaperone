@@ -6,6 +6,62 @@ namespace Chaperone.Tests;
 
 public class ChaperoneEngineTests
 {
+    // Distinct literal names, so the allocation test measures many live pairs without building
+    // strings per poll.
+    private static readonly string[] CrowdNames =
+    [
+        "Crowd Member01",
+        "Crowd Member02",
+        "Crowd Member03",
+        "Crowd Member04",
+        "Crowd Member05",
+        "Crowd Member06",
+        "Crowd Member07",
+        "Crowd Member08",
+        "Crowd Member09",
+        "Crowd Member10",
+        "Crowd Member11",
+        "Crowd Member12",
+        "Crowd Member13",
+        "Crowd Member14",
+        "Crowd Member15",
+        "Crowd Member16",
+        "Crowd Member17",
+        "Crowd Member18",
+        "Crowd Member19",
+        "Crowd Member20",
+        "Crowd Member21",
+        "Crowd Member22",
+        "Crowd Member23",
+        "Crowd Member24",
+        "Crowd Member25",
+        "Crowd Member26",
+        "Crowd Member27",
+        "Crowd Member28",
+        "Crowd Member29",
+        "Crowd Member30",
+        "Crowd Member31",
+        "Crowd Member32",
+        "Crowd Member33",
+        "Crowd Member34",
+        "Crowd Member35",
+        "Crowd Member36",
+        "Crowd Member37",
+        "Crowd Member38",
+        "Crowd Member39",
+        "Crowd Member40",
+        "Crowd Member41",
+        "Crowd Member42",
+        "Crowd Member43",
+        "Crowd Member44",
+        "Crowd Member45",
+        "Crowd Member46",
+        "Crowd Member47",
+        "Crowd Member48",
+        "Crowd Member49",
+        "Crowd Member50",
+    ];
+
     private static ChaperoneEngine Engine(double threshold = 3, int floor = 0) =>
         new(new EngineSettings { Policy = new PolicySettings { DwellThresholdSeconds = threshold, GlobalFloorSeconds = floor } });
 
@@ -239,7 +295,7 @@ public class ChaperoneEngineTests
             Add(snap, 60, "Some Target", 5, contentId: 66);
             for (ulong i = 100; i < 150; i++)
             {
-                Add(snap, i, "Crowd Member", 9, contentId: i, target: i % 3 == 0 ? 20ul : i % 3 == 1 ? 60ul : 0ul);
+                Add(snap, i, CrowdNames[i - 100], 9, contentId: i, target: i % 3 == 0 ? 20ul : i % 3 == 1 ? 60ul : 0ul);
             }
         }
 
@@ -258,7 +314,82 @@ public class ChaperoneEngineTests
         }
 
         var after = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(engine.Frame.LivePairs >= 30);
         Assert.Equal(0, after - before);
+    }
+
+    [Fact]
+    public void PairCooldownSurvivesPairEndingAndRestarting()
+    {
+        var engine = Engine(threshold: 3);
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        int Run(long from, long to, bool targeting)
+        {
+            var alerts = 0;
+            for (var t = from; t <= to; t += 200)
+            {
+                Fill(snap, t);
+                Add(snap, 20, "Some Friend", 5, contentId: 555);
+                Add(snap, 30, "Some Stranger", 7, target: targeting ? 20ul : 0ul);
+                engine.Poll(snap, list);
+                alerts += engine.Frame.Alerts.Count;
+            }
+
+            return alerts;
+        }
+
+        // First alert at the threshold.
+        Assert.Equal(1, Run(0, 3000, targeting: true));
+
+        // Absent for longer than the grace period: the pair ends into history.
+        Assert.Equal(0, Run(3200, 5000, targeting: false));
+        Assert.Equal(0, engine.Frame.LivePairs);
+        Assert.Single(engine.Frame.Subjects[0].History);
+
+        // Back and holding well past the threshold, still inside the 60 s cooldown: no alert.
+        Assert.Equal(0, Run(5200, 10_000, targeting: true));
+        Assert.Equal(1, engine.Frame.LivePairs);
+        Assert.True(engine.Frame.Subjects[0].Live[0].Alerted);
+
+        // Leave again, then return after the cooldown has passed: a second alert fires.
+        Assert.Equal(0, Run(10_200, 12_000, targeting: false));
+        Assert.Equal(1, Run(70_000, 73_000, targeting: true));
+    }
+
+    [Fact]
+    public void ReturningTargeterLeavesHistoryAndIsLiveAgain()
+    {
+        var engine = Engine(threshold: 100);
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        Fill(snap, 0);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20);
+        engine.Poll(snap, list);
+
+        foreach (var t in new long[] { 200, 2000 })
+        {
+            Fill(snap, t);
+            Add(snap, 20, "Some Friend", 5, contentId: 555);
+            Add(snap, 30, "Some Stranger", 7);
+            engine.Poll(snap, list);
+        }
+
+        var view = engine.Frame.Subjects[0];
+        Assert.Empty(view.Live);
+        Assert.Equal("Some Stranger", Assert.Single(view.History).Name);
+
+        Fill(snap, 2200);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20);
+        engine.Poll(snap, list);
+
+        view = engine.Frame.Subjects[0];
+        Assert.Empty(view.History);
+        Assert.Equal("Some Stranger", Assert.Single(view.Live).Name);
     }
 
     [Fact]
