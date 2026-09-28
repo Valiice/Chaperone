@@ -86,6 +86,20 @@ public class AlertPolicyTests
     }
 
     [Fact]
+    public void LocalPlayerNeverPassesFiltersEvenWithEveryFilterOff()
+    {
+        var s = new PolicySettings
+        {
+            IgnoreParty = false, IgnoreAlliance = false, IgnoreFriends = false,
+            IgnoreFreeCompany = false, IgnoreWatched = false, AlertInCombat = true, LogSelf = true,
+            DwellThresholdSeconds = 0, GlobalFloorSeconds = 0,
+        };
+        var self = Pair(10, ObservationFlags.LocalPlayer);
+        Assert.False(AlertPolicy.PassesFilters(self, s));
+        Assert.False(new AlertPolicy().ShouldAlert(self, s, 10_000));
+    }
+
+    [Fact]
     public void StrangerPassesDefaultFilters()
     {
         Assert.True(AlertPolicy.PassesFilters(Pair(10), new PolicySettings()));

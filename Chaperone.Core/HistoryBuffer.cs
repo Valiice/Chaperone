@@ -44,6 +44,15 @@ public sealed class HistoryBuffer
     /// watched friend).</summary>
     public void Forget(PlayerKey subject) => this.bySubject.Remove(subject);
 
+    /// <summary>Hands the history of <paramref name="from"/> to <paramref name="to"/> unless the latter already has one.</summary>
+    public void Move(PlayerKey from, PlayerKey to)
+    {
+        if (this.bySubject.Remove(from, out var list) && !this.bySubject.ContainsKey(to))
+        {
+            this.bySubject[to] = list;
+        }
+    }
+
     public void ClearAll()
     {
         foreach (var list in this.bySubject.Values)

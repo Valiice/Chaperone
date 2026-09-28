@@ -9,6 +9,8 @@ public sealed class AlertPolicy
     {
         // Bitwise checks, not Enum.HasFlag: HasFlag boxes both the receiver and the argument in
         // unoptimized (Tier0/Debug) code, which the zero-allocation test runs under.
+        // The user's own targeting only shows up with LogSelf on, for testing; it never alerts.
+        if ((pair.Flags & ObservationFlags.LocalPlayer) != 0) return false;
         if (s.IgnoreParty && (pair.Flags & ObservationFlags.Party) != 0) return false;
         if (s.IgnoreAlliance && (pair.Flags & ObservationFlags.Alliance) != 0) return false;
         if (s.IgnoreFriends && (pair.Flags & ObservationFlags.Friend) != 0) return false;

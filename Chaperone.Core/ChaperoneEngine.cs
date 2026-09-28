@@ -191,7 +191,9 @@ public sealed class ChaperoneEngine
             && this.byGameObjectId.TryGetValue(snap.LocalTargetId, out var index))
         {
             ref var o = ref snap.Players[index];
-            targetKey = PlayerKey.From(o.ContentId, o.Name, o.HomeWorldId);
+            // Keyed by name, not content id: a content id that reads 0 on first sight and non-zero
+            // a poll later must not look like a retarget and drop the subject's rows.
+            targetKey = PlayerKey.FromName(o.Name, o.HomeWorldId);
         }
 
         if (targetKey != this.CurrentTargetKey)
@@ -207,6 +209,14 @@ public sealed class ChaperoneEngine
                     this.tracker.EndSubject(this.CurrentTargetKey, this.ended);
                     this.ReleaseEnded();
                     this.history.Forget(this.CurrentTargetKey);
+                }
+                else if (this.subjectsByObject.TryGetValue(this.transientView.GameObjectId, out var claimed)
+                    && claimed.Key != this.CurrentTargetKey
+                    && PlayerKey.FromName(claimed.Name, claimed.WorldId) == this.CurrentTargetKey)
+                {
+                    // The transient subject is keyed by name but the watched entry that just claimed
+                    // it is keyed by content id: carry its pairs, history and cooldowns across.
+                    this.RenameSubject(this.CurrentTargetKey, claimed.Key);
                 }
 
                 if (this.viewsByKey.TryGetValue(this.CurrentTargetKey, out var oldView) && ReferenceEquals(oldView, this.transientView))
@@ -375,6 +385,31 @@ public sealed class ChaperoneEngine
                     row.ObjectIndex = this.lastSnapshot!.Players[idx].ObjectIndex;
                     view.Live[r] = row;
                 }
+            }
+        }
+    }
+
+    private void RenameSubject(PlayerKey from, PlayerKey to)
+    {
+        this.tracker.RenameSubject(from, to, this.ended);
+        this.ReleaseEnded();
+        this.history.Move(from, to);
+
+        this.pruneScratch.Clear();
+        foreach (var (key, _) in this.lastAlertByPair)
+        {
+            if (key.Subject == from)
+            {
+                this.pruneScratch.Add(key);
+            }
+        }
+
+        for (var i = 0; i < this.pruneScratch.Count; i++)
+        {
+            var key = this.pruneScratch[i];
+            if (this.lastAlertByPair.Remove(key, out var alertedMs))
+            {
+                this.lastAlertByPair.TryAdd(new PairKey(key.Targeter, to), alertedMs);
             }
         }
     }

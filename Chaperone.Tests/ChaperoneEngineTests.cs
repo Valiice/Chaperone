@@ -168,7 +168,7 @@ public class ChaperoneEngineTests
         Assert.True(view.IsCurrentTarget);
         Assert.False(view.IsWatched);
         Assert.Single(view.Live);
-        Assert.Equal(PlayerKey.FromContentId(41), engine.CurrentTargetKey);
+        Assert.Equal(PlayerKey.FromName("Person A", 5), engine.CurrentTargetKey);
 
         // Stranger stops; A gets history.
         Fill(snap, 200, localTarget: 40);
@@ -210,6 +210,28 @@ public class ChaperoneEngineTests
     }
 
     [Fact]
+    public void CurrentTargetContentIdArrivingLateKeepsRows()
+    {
+        var engine = Engine(threshold: 100);
+        var list = new List<WatchlistEntry>();
+        var snap = new Snapshot();
+
+        Fill(snap, 0, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 0);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+
+        Fill(snap, 200, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+
+        var row = Assert.Single(Assert.Single(engine.Frame.Subjects).Live);
+        Assert.Equal(0.2, row.DwellSeconds, 3);
+        Assert.Equal(PlayerKey.FromName("Person A", 5), engine.CurrentTargetKey);
+    }
+
+    [Fact]
     public void TargetingAWatchedFriendDoesNotDuplicateOrLogSelf()
     {
         var engine = Engine(threshold: 0);
@@ -231,6 +253,7 @@ public class ChaperoneEngineTests
         engine.Poll(snap, list);
         Assert.Single(engine.Frame.Subjects[0].Live);
         Assert.Equal("Local Player", engine.Frame.Subjects[0].Live[0].Name);
+        Assert.Empty(engine.Frame.Alerts);
     }
 
     [Fact]

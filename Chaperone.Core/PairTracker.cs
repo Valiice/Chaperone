@@ -78,6 +78,40 @@ public sealed class PairTracker
         this.RemoveScratch(ended);
     }
 
+    /// <summary>
+    /// Re-keys every pair of <paramref name="from"/> to <paramref name="to"/>, keeping dwell and alert
+    /// state. A pair that already exists under the new key wins; the old one goes to <paramref name="ended"/>.
+    /// </summary>
+    public void RenameSubject(PlayerKey from, PlayerKey to, List<PairState> ended)
+    {
+        this.scratch.Clear();
+        foreach (var (key, _) in this.live)
+        {
+            if (key.Subject == from)
+            {
+                this.scratch.Add(key);
+            }
+        }
+
+        foreach (var key in this.scratch)
+        {
+            if (!this.live.Remove(key, out var state))
+            {
+                continue;
+            }
+
+            var renamed = new PairKey(key.Targeter, to);
+            if (this.live.ContainsKey(renamed))
+            {
+                ended.Add(state);
+                continue;
+            }
+
+            state.Key = renamed;
+            this.live[renamed] = state;
+        }
+    }
+
     public void Release(PairState state) => this.pool.Push(state);
 
     public void Clear()
