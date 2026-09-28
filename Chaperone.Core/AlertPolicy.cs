@@ -7,12 +7,14 @@ public sealed class AlertPolicy
 
     public static bool PassesFilters(PairState pair, PolicySettings s)
     {
-        if (s.IgnoreParty && pair.Flags.HasFlag(ObservationFlags.Party)) return false;
-        if (s.IgnoreAlliance && pair.Flags.HasFlag(ObservationFlags.Alliance)) return false;
-        if (s.IgnoreFriends && pair.Flags.HasFlag(ObservationFlags.Friend)) return false;
-        if (s.IgnoreFreeCompany && pair.Flags.HasFlag(ObservationFlags.FreeCompany)) return false;
+        // Bitwise checks, not Enum.HasFlag: HasFlag boxes both the receiver and the argument on
+        // every call (still true as of .NET 10), which would allocate on this per-poll path.
+        if (s.IgnoreParty && (pair.Flags & ObservationFlags.Party) != 0) return false;
+        if (s.IgnoreAlliance && (pair.Flags & ObservationFlags.Alliance) != 0) return false;
+        if (s.IgnoreFriends && (pair.Flags & ObservationFlags.Friend) != 0) return false;
+        if (s.IgnoreFreeCompany && (pair.Flags & ObservationFlags.FreeCompany) != 0) return false;
         if (s.IgnoreWatched && pair.TargeterIsWatched) return false;
-        if (!s.AlertInCombat && pair.Flags.HasFlag(ObservationFlags.InCombat)) return false;
+        if (!s.AlertInCombat && (pair.Flags & ObservationFlags.InCombat) != 0) return false;
         return true;
     }
 

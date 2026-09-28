@@ -1,0 +1,263 @@
+using Chaperone.Core;
+using Xunit;
+using static Chaperone.Tests.SnapshotBuilder;
+
+namespace Chaperone.Tests;
+
+public class ChaperoneEngineTests
+{
+    private static ChaperoneEngine Engine(double threshold = 3, int floor = 0) =>
+        new(new EngineSettings { Policy = new PolicySettings { DwellThresholdSeconds = threshold, GlobalFloorSeconds = floor } });
+
+    [Fact]
+    public void StrangerTargetingFriendShowsRowThenAlertsAtThreshold()
+    {
+        var engine = Engine();
+        var friend = Entry("Some Friend", 5);
+        var list = new List<WatchlistEntry> { friend };
+        var snap = new Snapshot();
+
+        for (long t = 0; t <= 3000; t += 1000)
+        {
+            Fill(snap, t);
+            Add(snap, 20, "Some Friend", 5, contentId: 555);
+            Add(snap, 30, "Some Stranger", 7, target: 20);
+            engine.Poll(snap, list);
+
+            var view = Assert.Single(engine.Frame.Subjects);
+            Assert.True(view.IsNearby);
+            Assert.True(view.IsWatched);
+            var row = Assert.Single(view.Live);
+            Assert.Equal("Some Stranger", row.Name);
+            Assert.Equal(t / 1000d, row.DwellSeconds, 3);
+            Assert.Equal(t == 3000 ? 1 : 0, engine.Frame.Alerts.Count);
+        }
+
+        var alert = engine.Frame.Alerts[0];
+        Assert.Equal("Some Stranger", alert.TargeterName);
+        Assert.Equal("Some Friend", alert.SubjectName);
+        Assert.Equal(5u, alert.SubjectWorldId);
+    }
+
+    [Fact]
+    public void FriendNotNearbyIsListedButEmpty()
+    {
+        var engine = Engine();
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5) };
+        engine.Poll(New(0), list);
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.False(view.IsNearby);
+        Assert.Empty(view.Live);
+        Assert.Equal("Some Friend", view.Name);
+    }
+
+    [Fact]
+    public void LearnsContentIdAndMatchesRenamedFriend()
+    {
+        var engine = Engine();
+        var friend = Entry("Some Friend", 5);
+        var list = new List<WatchlistEntry> { friend };
+        var snap = new Snapshot();
+
+        Fill(snap, 0);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        engine.Poll(snap, list);
+        Assert.Equal(555ul, friend.ContentId);
+        Assert.True(engine.Frame.WatchlistChanged);
+
+        Fill(snap, 200);
+        Add(snap, 20, "New Name", 5, contentId: 555);
+        engine.Poll(snap, list);
+        Assert.False(engine.Frame.WatchlistChanged);
+        Assert.True(engine.Frame.Subjects[0].IsNearby);
+    }
+
+    [Fact]
+    public void ContentIdArrivingLateDoesNotSplitPair()
+    {
+        var engine = Engine(threshold: 100);
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        Fill(snap, 0);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20, contentId: 0);
+        engine.Poll(snap, list);
+
+        Fill(snap, 200);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20, contentId: 9);
+        engine.Poll(snap, list);
+
+        var view = engine.Frame.Subjects[0];
+        Assert.Single(view.Live);
+        Assert.Equal(0.2, view.Live[0].DwellSeconds, 3);
+        Assert.Equal(1, engine.Frame.LivePairs);
+    }
+
+    [Fact]
+    public void CurrentTargetBecomesTransientSubjectAndRetargetDropsIt()
+    {
+        var engine = Engine(threshold: 100);
+        var list = new List<WatchlistEntry>();
+        var snap = new Snapshot();
+
+        // Targeting A; stranger S also targets A.
+        Fill(snap, 0, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 50, "Person B", 5, contentId: 51);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.True(view.IsCurrentTarget);
+        Assert.False(view.IsWatched);
+        Assert.Single(view.Live);
+        Assert.Equal(PlayerKey.FromContentId(41), engine.CurrentTargetKey);
+
+        // Stranger stops; A gets history.
+        Fill(snap, 200, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 50, "Person B", 5, contentId: 51);
+        Add(snap, 30, "Some Stranger", 7);
+        engine.Poll(snap, list);
+        Fill(snap, 2000, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 50, "Person B", 5, contentId: 51);
+        Add(snap, 30, "Some Stranger", 7);
+        engine.Poll(snap, list);
+        Assert.Single(engine.Frame.Subjects[0].History);
+
+        // Retarget to B: B is the only subject and has no history. Target A again: history is gone.
+        Fill(snap, 2200, localTarget: 50);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 50, "Person B", 5, contentId: 51);
+        Add(snap, 30, "Some Stranger", 7, target: 40);
+        engine.Poll(snap, list);
+        view = Assert.Single(engine.Frame.Subjects);
+        Assert.Equal("Person B", view.Name);
+        Assert.Empty(view.Live);
+        Assert.Empty(view.History);
+        Assert.Equal(0, engine.Frame.LivePairs);
+
+        Fill(snap, 2400, localTarget: 40);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        Add(snap, 50, "Person B", 5, contentId: 51);
+        engine.Poll(snap, list);
+        Assert.Empty(engine.Frame.Subjects[0].History);
+
+        // No target at all: no subjects.
+        Fill(snap, 2600);
+        Add(snap, 40, "Person A", 5, contentId: 41);
+        engine.Poll(snap, list);
+        Assert.Empty(engine.Frame.Subjects);
+        Assert.True(engine.CurrentTargetKey.IsNone);
+    }
+
+    [Fact]
+    public void TargetingAWatchedFriendDoesNotDuplicateOrLogSelf()
+    {
+        var engine = Engine(threshold: 0);
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        Fill(snap, 0, localTarget: 20);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        engine.Poll(snap, list);
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.True(view.IsCurrentTarget);
+        Assert.True(view.IsWatched);
+        Assert.Empty(view.Live);
+        Assert.Empty(engine.Frame.Alerts);
+
+        engine.Settings.Policy.LogSelf = true;
+        Fill(snap, 200, localTarget: 20);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        engine.Poll(snap, list);
+        Assert.Single(engine.Frame.Subjects[0].Live);
+        Assert.Equal("Local Player", engine.Frame.Subjects[0].Live[0].Name);
+    }
+
+    [Fact]
+    public void WatchedFriendsTargetingEachOtherShowRowsButNeverAlert()
+    {
+        var engine = Engine(threshold: 0);
+        var list = new List<WatchlistEntry> { Entry("Friend One", 5, 11), Entry("Friend Two", 5, 22) };
+        var snap = new Snapshot();
+
+        for (long t = 0; t <= 5000; t += 1000)
+        {
+            Fill(snap, t);
+            Add(snap, 20, "Friend One", 5, contentId: 11, target: 21);
+            Add(snap, 21, "Friend Two", 5, contentId: 22, target: 20);
+            engine.Poll(snap, list);
+            Assert.Empty(engine.Frame.Alerts);
+        }
+
+        Assert.Equal(2, engine.Frame.Subjects.Count);
+        Assert.Single(engine.Frame.Subjects[0].Live);
+        Assert.Single(engine.Frame.Subjects[1].Live);
+    }
+
+    [Fact]
+    public void ResetAndForgetSubjectClearState()
+    {
+        var engine = Engine(threshold: 100);
+        var friend = Entry("Some Friend", 5, 555);
+        var list = new List<WatchlistEntry> { friend };
+        var snap = new Snapshot();
+        Fill(snap, 0);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20);
+        engine.Poll(snap, list);
+        Assert.Equal(1, engine.Frame.LivePairs);
+
+        engine.ForgetSubject(friend.Key);
+        Fill(snap, 200);
+        engine.Poll(snap, new List<WatchlistEntry>());
+        Assert.Equal(0, engine.Frame.LivePairs);
+        Assert.Empty(engine.Frame.Subjects);
+
+        engine.Poll(snap, list);
+        engine.Reset();
+        Assert.Equal(0, engine.Frame.LivePairs);
+        Assert.Empty(engine.Frame.Subjects);
+        Assert.Empty(engine.Frame.Alerts);
+    }
+
+    [Fact]
+    public void SteadyStatePollAllocatesNothing()
+    {
+        var engine = Engine(threshold: 2);
+        var list = new List<WatchlistEntry> { Entry("Friend One", 5, 11), Entry("Friend Two", 5, 22) };
+        var snap = new Snapshot();
+
+        void Build(long t)
+        {
+            Fill(snap, t, localTarget: 60);
+            Add(snap, 20, "Friend One", 5, contentId: 11);
+            Add(snap, 21, "Friend Two", 5, contentId: 22);
+            Add(snap, 60, "Some Target", 5, contentId: 66);
+            for (ulong i = 100; i < 150; i++)
+            {
+                Add(snap, i, "Crowd Member", 9, contentId: i, target: i % 3 == 0 ? 20ul : i % 3 == 1 ? 60ul : 0ul);
+            }
+        }
+
+        // Warm up: first sightings allocate views, pair states and history lists.
+        for (long t = 0; t < 5000; t += 200)
+        {
+            Build(t);
+            engine.Poll(snap, list);
+        }
+
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (long t = 5000; t < 45_000; t += 200)
+        {
+            Build(t);
+            engine.Poll(snap, list);
+        }
+
+        var after = GC.GetAllocatedBytesForCurrentThread();
+        Assert.Equal(0, after - before);
+    }
+}

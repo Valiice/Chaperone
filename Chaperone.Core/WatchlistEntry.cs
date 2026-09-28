@@ -14,6 +14,9 @@ public sealed class WatchlistEntry
 
     public string Display => $"{this.Name}@{this.World}";
 
+    /// <summary>Content key once seen, name key before that. This is the subject key the engine uses.</summary>
+    public PlayerKey Key => this.ContentId != 0 ? PlayerKey.FromContentId(this.ContentId) : PlayerKey.FromName(this.Name, this.WorldId);
+
     public bool Matches(string name, uint worldId, ulong contentId)
     {
         // When both content ids are known (non-zero), use that as the definitive check
