@@ -22,15 +22,16 @@ public sealed class PairTracker
     }
 
     /// <summary>
-    /// Records a sighting of the pair. An existing pair last seen more than <paramref name="graceMs"/>
+    /// Records a sighting of the pair. An existing pair last seen more than <paramref name="restartGapMs"/>
     /// ago (polling was gated by GPose, a cutscene or PvP, so <see cref="EndPoll"/> never ran) is
-    /// restarted in place instead of being credited the whole gap as dwell.
+    /// restarted in place instead of being credited the whole gap as dwell. The caller keeps the
+    /// gap above a few poll intervals so a small grace period never restarts consecutive sightings.
     /// </summary>
-    public PairState Observe(PairKey key, long nowMs, long graceMs)
+    public PairState Observe(PairKey key, long nowMs, long restartGapMs)
     {
         if (this.live.TryGetValue(key, out var state))
         {
-            if (nowMs - state.LastSeenMs > graceMs)
+            if (nowMs - state.LastSeenMs > restartGapMs)
             {
                 state.Reset(key, nowMs);
                 return state;

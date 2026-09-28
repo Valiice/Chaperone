@@ -150,16 +150,21 @@ public sealed class ChaperoneEngine
                 if (entry.ContentId == 0 && o.ContentId != 0)
                 {
                     // First sight with a content id: the subject key changes from name to content.
-                    // Any pair keyed by the old subject is at most a few polls old; drop it.
+                    // Carry pairs, history and cooldowns across. The old name key may be the current
+                    // target's transient key (the target was just added by name); the player is now
+                    // watched, so the transient subject simply stops, with nothing torn down.
+                    var oldKey = key;
                     entry.ContentId = o.ContentId;
                     this.Frame.WatchlistChanged = true;
-                    this.tracker.EndSubject(key, this.ended);
-                    this.ReleaseEnded();
-                    this.history.Forget(key);
-                    this.viewsByKey.Remove(key);
                     key = entry.Key;
+                    this.RenameSubject(oldKey, key);
+                    this.viewsByKey.Remove(oldKey);
                     this.viewsByKey[key] = view;
                     view.Key = key;
+                    if (this.CurrentTargetKey == oldKey)
+                    {
+                        this.CurrentTargetKey = PlayerKey.None;
+                    }
                 }
 
                 view.Name = o.Name;
@@ -254,6 +259,10 @@ public sealed class ChaperoneEngine
         this.tracker.BeginPoll();
         var settings = this.Settings.Policy;
 
+        // Independent of how small the grace is: a grace at or below the poll interval must not
+        // restart a pair on every consecutive sighting.
+        var restartGapMs = Math.Max(this.Settings.GraceMs, 3L * this.Settings.PollIntervalMs);
+
         for (var i = 0; i < snap.Count; i++)
         {
             ref var o = ref snap.Players[i];
@@ -273,7 +282,7 @@ public sealed class ChaperoneEngine
             }
 
             var targeterKey = PlayerKey.FromName(o.Name, o.HomeWorldId);
-            var pair = this.tracker.Observe(new PairKey(targeterKey, view.Key), now, this.Settings.GraceMs);
+            var pair = this.tracker.Observe(new PairKey(targeterKey, view.Key), now, restartGapMs);
             pair.TargeterName = o.Name;
             pair.TargeterWorldId = o.HomeWorldId;
             pair.TargeterGameObjectId = o.GameObjectId;

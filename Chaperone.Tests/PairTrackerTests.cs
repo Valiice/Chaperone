@@ -98,7 +98,8 @@ public class PairTrackerTests
     [Fact]
     public void ObservedAfterGatedGapRestartsInPlace()
     {
-        // Polling was gated between 0 and 10_000, so EndPoll never ran to end the pair.
+        // Polling was gated between 0 and 10_000, so EndPoll never ran to end the pair. 1500 is the
+        // restart gap (the larger of grace and three poll intervals).
         var t = new PairTracker();
         t.BeginPoll();
         var first = t.Observe(Key, 0, 1500);
@@ -110,5 +111,17 @@ public class PairTrackerTests
         Assert.Equal(0, second.DwellSeconds);
         Assert.Equal(10_000, second.StartedMs);
         Assert.Equal(10_000, second.LastSeenMs);
+    }
+
+    [Fact]
+    public void GapWithinRestartGapContinuesPair()
+    {
+        var t = new PairTracker();
+        t.BeginPoll();
+        t.Observe(Key, 0, 600);
+        t.BeginPoll();
+        var state = t.Observe(Key, 600, 600);
+        Assert.Equal(0, state.StartedMs);
+        Assert.Equal(0.6, state.DwellSeconds, 3);
     }
 }

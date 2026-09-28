@@ -93,6 +93,7 @@ public class Configuration : IPluginConfiguration, IDisposable
     public void ApplyTo(EngineSettings settings)
     {
         settings.GraceMs = this.GraceMs;
+        settings.PollIntervalMs = this.PollIntervalMs;
         settings.HistorySize = this.HistorySize;
         var p = settings.Policy;
         p.DwellThresholdSeconds = this.DwellThresholdSeconds;

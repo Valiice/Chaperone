@@ -382,6 +382,120 @@ public class ChaperoneEngineTests
     }
 
     [Fact]
+    public void ZeroGraceStillAccumulatesDwellAndAlertsOnce()
+    {
+        var engine = Engine(threshold: 3);
+        engine.Settings.GraceMs = 0;
+        engine.Settings.PollIntervalMs = 200;
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+        var alerts = 0;
+
+        for (long t = 0; t <= 3000; t += 200)
+        {
+            Fill(snap, t);
+            Add(snap, 20, "Some Friend", 5, contentId: 555);
+            Add(snap, 30, "Some Stranger", 7, target: 20);
+            engine.Poll(snap, list);
+            alerts += engine.Frame.Alerts.Count;
+            Assert.Equal(t == 3000 ? 1 : 0, engine.Frame.Alerts.Count);
+        }
+
+        Assert.Equal(1, alerts);
+        Assert.Equal(3.0, Assert.Single(engine.Frame.Subjects[0].Live).DwellSeconds, 3);
+    }
+
+    [Fact]
+    public void ZeroGraceEndsPairAfterOneMissedPoll()
+    {
+        var engine = Engine(threshold: 100);
+        engine.Settings.GraceMs = 0;
+        engine.Settings.PollIntervalMs = 200;
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        void Poll(long t, bool targeting)
+        {
+            Fill(snap, t);
+            Add(snap, 20, "Some Friend", 5, contentId: 555);
+            Add(snap, 30, "Some Stranger", 7, target: targeting ? 20ul : 0ul);
+            engine.Poll(snap, list);
+        }
+
+        Poll(0, true);
+        Poll(200, true);
+        Poll(400, false);
+        var view = engine.Frame.Subjects[0];
+        Assert.Empty(view.Live);
+        Assert.Equal(0.2, Assert.Single(view.History).DwellSeconds, 3);
+
+        Poll(600, true);
+        view = engine.Frame.Subjects[0];
+        Assert.Empty(view.History);
+        Assert.Equal(0, Assert.Single(view.Live).DwellSeconds, 3);
+        Poll(800, true);
+        Assert.Equal(0.2, Assert.Single(engine.Frame.Subjects[0].Live).DwellSeconds, 3);
+    }
+
+    [Fact]
+    public void AddingCurrentTargetByNameKeepsRowsHistoryAndCooldown()
+    {
+        var engine = Engine(threshold: 3);
+        var list = new List<WatchlistEntry>();
+        var snap = new Snapshot();
+        var alerts = 0;
+
+        void Poll(long t, bool otherTargeting)
+        {
+            Fill(snap, t, localTarget: 40);
+            Add(snap, 40, "Person A", 5, contentId: 41);
+            Add(snap, 30, "Some Stranger", 7, target: 40);
+            Add(snap, 31, "Other Stranger", 7, target: otherTargeting ? 40ul : 0ul);
+            engine.Poll(snap, list);
+            alerts += engine.Frame.Alerts.Count;
+        }
+
+        // P is the unwatched current target. One stranger stays long enough to alert; another
+        // looks briefly and ends up in history.
+        for (long t = 0; t <= 3000; t += 200)
+        {
+            Poll(t, otherTargeting: t == 0);
+        }
+
+        Assert.Equal(1, alerts);
+        var before = Assert.Single(engine.Frame.Subjects);
+        Assert.False(before.IsWatched);
+        Assert.Single(before.History);
+
+        // Add P by name only, as "Add current target" does: the entry has no content id yet.
+        var entry = Entry("Person A", 5);
+        list.Add(entry);
+        Poll(3200, otherTargeting: false);
+
+        Assert.Equal(41ul, entry.ContentId);
+        Assert.True(engine.CurrentTargetKey.IsNone);
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.True(view.IsWatched);
+        Assert.True(view.IsCurrentTarget);
+        Assert.Equal(entry.Key, view.Key);
+        var row = Assert.Single(view.Live);
+        Assert.Equal("Some Stranger", row.Name);
+        Assert.Equal(3.2, row.DwellSeconds, 3);
+        Assert.True(row.Alerted);
+        Assert.Equal("Other Stranger", Assert.Single(view.History).Name);
+        Assert.Equal(1, engine.Frame.LivePairs);
+
+        // Dwell keeps growing on the same pair and the cooldown holds.
+        for (long t = 3400; t <= 10_000; t += 200)
+        {
+            Poll(t, otherTargeting: false);
+        }
+
+        Assert.Equal(1, alerts);
+        Assert.Equal(10.0, Assert.Single(engine.Frame.Subjects[0].Live).DwellSeconds, 3);
+    }
+
+    [Fact]
     public void ReturningTargeterLeavesHistoryAndIsLiveAgain()
     {
         var engine = Engine(threshold: 100);
