@@ -18,6 +18,7 @@ public class Configuration : IPluginConfiguration, IDisposable
     [NonSerialized] private readonly object saveGate = new();
     [NonSerialized] private Timer? saveTimer;
     [NonSerialized] private int dirty;
+    [NonSerialized] private bool disposed;
 
     /// <summary>Held by every Watchlist mutation and by Flush, which serializes the list on another thread.</summary>
     [NonSerialized] internal readonly object WatchlistLock = new();
@@ -111,6 +112,12 @@ public class Configuration : IPluginConfiguration, IDisposable
         Interlocked.Exchange(ref this.dirty, 1);
         lock (this.saveGate)
         {
+            if (this.disposed)
+            {
+                // Dispose already flushed; a Save after that is dropped by design.
+                return;
+            }
+
             this.saveTimer ??= new Timer(_ => this.Flush(), null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
             this.saveTimer.Change(SaveDelay, Timeout.InfiniteTimeSpan);
         }
@@ -141,6 +148,7 @@ public class Configuration : IPluginConfiguration, IDisposable
     {
         lock (this.saveGate)
         {
+            this.disposed = true;
             this.saveTimer?.Dispose();
             this.saveTimer = null;
         }

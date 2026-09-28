@@ -70,7 +70,11 @@ public sealed class WatchlistManager
             return "Chaperone: use First Last@World.";
         }
 
-        this.worlds.TryResolve(parsed.World, out var worldId, out _);
+        if (!this.worlds.TryResolve(parsed.World, out var worldId, out _))
+        {
+            return $"Chaperone: unknown world '{parsed.World}'.";
+        }
+
         lock (this.config.WatchlistLock)
         {
             for (var i = 0; i < this.config.Watchlist.Count; i++)
