@@ -22,6 +22,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly MainWindow? mainWindow;
     private readonly SettingsWindow? settingsWindow;
     private readonly ContextMenuIntegration? contextMenu;
+    private readonly WorldMarkers? markers;
+    private readonly DtrEntry? dtr;
 
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
@@ -43,6 +45,10 @@ public sealed class Plugin : IDalamudPlugin
             this.windowSystem.AddWindow(this.settingsWindow);
 
             this.contextMenu = new ContextMenuIntegration(this.watchlist, this.worlds);
+
+            this.markers = new WorldMarkers(this.config, this.engine);
+            this.dtr = new DtrEntry(this.config, this.engine, () => this.mainWindow!.Toggle());
+            Services.Framework.Update += this.OnFrameworkUpdate;
 
             pluginInterface.UiBuilder.Draw += this.windowSystem.Draw;
             pluginInterface.UiBuilder.OpenMainUi += this.OpenMain;
@@ -83,6 +89,9 @@ public sealed class Plugin : IDalamudPlugin
                 this.windowSystem.RemoveAllWindows();
             },
             "UI wiring");
+        Guard(() => Services.Framework.Update -= this.OnFrameworkUpdate, "dtr update");
+        Guard(() => this.dtr?.Dispose(), "dtr entry");
+        Guard(() => this.markers?.Dispose(), "world markers");
         Guard(() => this.contextMenu?.Dispose(), "context menu");
         Guard(() => this.sampler?.Dispose(), "sampler");
         Guard(() => this.config.Dispose(), "configuration flush");
@@ -109,6 +118,8 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private void OnLogout(int type, int code) => this.sampler?.Reset();
+
+    private void OnFrameworkUpdate(Dalamud.Plugin.Services.IFramework framework) => this.dtr?.Update();
 
     private void OnConfigChanged() => this.mainWindow?.ApplyConfig();
 
