@@ -1,0 +1,92 @@
+namespace Chaperone.Core;
+
+/// <summary>
+/// Tracks live (targeter, subject) pairs and their dwell. A pair survives a gap shorter than the
+/// grace period so target flicker does not reset it. No allocations in steady state: states are
+/// pooled and the scratch list is reused.
+/// </summary>
+public sealed class PairTracker
+{
+    private readonly Dictionary<PairKey, PairState> live = new();
+    private readonly Stack<PairState> pool = new();
+    private readonly List<PairKey> scratch = new();
+
+    public IReadOnlyDictionary<PairKey, PairState> Live => this.live;
+
+    public void BeginPoll()
+    {
+        foreach (var state in this.live.Values)
+        {
+            state.SeenThisPoll = false;
+        }
+    }
+
+    public PairState Observe(PairKey key, long nowMs)
+    {
+        if (this.live.TryGetValue(key, out var state))
+        {
+            state.DwellSeconds += (nowMs - state.LastSeenMs) / 1000d;
+            state.LastSeenMs = nowMs;
+            state.SeenThisPoll = true;
+            return state;
+        }
+
+        state = this.pool.Count > 0 ? this.pool.Pop() : new PairState();
+        state.Reset(key, nowMs);
+        this.live[key] = state;
+        return state;
+    }
+
+    /// <summary>Ends every pair not seen for longer than the grace period. Appends them to <paramref name="ended"/>.</summary>
+    public void EndPoll(long nowMs, long graceMs, List<PairState> ended)
+    {
+        this.scratch.Clear();
+        foreach (var (key, state) in this.live)
+        {
+            if (!state.SeenThisPoll && nowMs - state.LastSeenMs > graceMs)
+            {
+                this.scratch.Add(key);
+            }
+        }
+
+        this.RemoveScratch(ended);
+    }
+
+    /// <summary>Ends every pair whose subject matches, immediately.</summary>
+    public void EndSubject(PlayerKey subject, List<PairState> ended)
+    {
+        this.scratch.Clear();
+        foreach (var (key, _) in this.live)
+        {
+            if (key.Subject == subject)
+            {
+                this.scratch.Add(key);
+            }
+        }
+
+        this.RemoveScratch(ended);
+    }
+
+    public void Release(PairState state) => this.pool.Push(state);
+
+    public void Clear()
+    {
+        foreach (var state in this.live.Values)
+        {
+            this.pool.Push(state);
+        }
+
+        this.live.Clear();
+    }
+
+    private void RemoveScratch(List<PairState> ended)
+    {
+        foreach (var key in this.scratch)
+        {
+            if (this.live.Remove(key, out var state))
+            {
+                ended.Add(state);
+            }
+        }
+    }
+}
