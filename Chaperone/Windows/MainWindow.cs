@@ -20,6 +20,8 @@ namespace Chaperone.Windows;
 /// </summary>
 public sealed class MainWindow : Window
 {
+    private const long DayMs = 86_400_000;
+
     private static readonly Vector4 Red = new(1f, 0.35f, 0.35f, 1f);
 
     private static readonly ConditionFlag[] DutyConditions =
@@ -149,7 +151,6 @@ public sealed class MainWindow : Window
         private const int PruneEveryFrames = 600;
 
         private readonly Dictionary<(ulong Subject, ulong Targeter, bool History), Entry> entries = new();
-        private readonly List<(ulong, ulong, bool)> scratch = new();
         private int frameCounter;
         private bool showTimes;
 
@@ -166,20 +167,23 @@ public sealed class MainWindow : Window
         public Entry Get(SubjectView view, PlayerKey targeter, string name, long stampMs, long nowMs, bool history)
         {
             var key = (view.Key.Value, targeter.Value, history);
-            var dayOld = nowMs - stampMs >= 86_400_000;
+            var dayOld = nowMs - stampMs >= DayMs;
             if (!this.entries.TryGetValue(key, out var entry))
             {
-                entry = new Entry();
+                // The label depends only on the names and keys, so it is built once per row.
+                entry = new Entry
+                {
+                    Label = history ? $"{name}##{key.Item1}-h{key.Item2}" : $"{name}##{key.Item1}-{key.Item2}",
+                };
                 this.entries[key] = entry;
             }
 
-            if (entry.StampMs != stampMs || entry.DayOld != dayOld || !ReferenceEquals(entry.SubjectName, view.Name))
+            if (entry.StampMs != stampMs || entry.DayOld != dayOld || !string.Equals(entry.SubjectName, view.Name, StringComparison.Ordinal))
             {
                 entry.StampMs = stampMs;
                 entry.DayOld = dayOld;
                 entry.SubjectName = view.Name;
-                entry.Label = history ? $"{name}##{key.Item1}-h{key.Item2}" : $"{name}##{key.Item1}-{key.Item2}";
-                entry.Right = this.showTimes ? $"{view.Name} {FormatClock(stampMs, nowMs)}" : view.Name;
+                entry.Right = this.showTimes ? $"{view.Name} {FormatClock(stampMs, dayOld)}" : view.Name;
             }
 
             entry.LastFrame = this.frameCounter;
@@ -193,18 +197,13 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            this.scratch.Clear();
+            // Removing during enumeration is safe for Dictionary on this runtime.
             foreach (var (key, entry) in this.entries)
             {
                 if (this.frameCounter - entry.LastFrame > PruneEveryFrames)
                 {
-                    this.scratch.Add(key);
+                    this.entries.Remove(key);
                 }
-            }
-
-            for (var i = 0; i < this.scratch.Count; i++)
-            {
-                this.entries.Remove(this.scratch[i]);
             }
         }
 
@@ -301,10 +300,10 @@ public sealed class MainWindow : Window
     }
 
     /// <summary>Local clock time like PeepingTom: "03:23", or "dd/MM" once it is a day old.</summary>
-    private static string FormatClock(long unixMs, long nowMs)
+    private static string FormatClock(long unixMs, bool dayOld)
     {
         var local = DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToLocalTime();
-        return nowMs - unixMs >= 86_400_000 ? local.ToString("dd/MM") : local.ToString("HH:mm");
+        return dayOld ? local.ToString("dd/MM") : local.ToString("HH:mm");
     }
 
     private void RestoreFocus(bool anyHovered)

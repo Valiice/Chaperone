@@ -3,7 +3,6 @@ using Chaperone.Core;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
-using Dalamud.Interface.Utility;
 
 namespace Chaperone.Windows;
 
@@ -52,11 +51,9 @@ public sealed class WorldMarkers : IDisposable
             return;
         }
 
-        // One clip rect for every marker this frame, not one push and pop per circle.
+        // The background draw list already carries the main viewport clip rect for the frame,
+        // so nothing is pushed here: a push without a guaranteed pop would leak into other plugins.
         var drawList = ImGui.GetBackgroundDrawList();
-        var viewport = ImGuiHelpers.MainViewport;
-        drawList.PushClipRect(viewport.Pos, viewport.Pos + viewport.Size, false);
-
         var friendColour = ImGui.GetColorU32(this.config.FriendColour);
         var targeterColour = ImGui.GetColorU32(this.config.TargeterColour);
         for (var s = 0; s < subjects.Count; s++)
@@ -78,8 +75,6 @@ public sealed class WorldMarkers : IDisposable
                 Mark(drawList, ObjectLookup.Resolve(row.ObjectIndex, row.GameObjectId), targeterColour, this.config.TargeterSize);
             }
         }
-
-        drawList.PopClipRect();
     }
 
     private static void Mark(ImDrawListPtr drawList, IGameObject? obj, uint colour, float size)

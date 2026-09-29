@@ -249,6 +249,10 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         this.config.ApplyTo(this.engine.Settings);
         this.engine.Poll(this.snapshot, this.config.Watchlist);
 
+        // Measured here, before alert delivery and any config save, so the number is the
+        // sampler's and engine's own work.
+        this.AllocBytesLastPoll = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
+
         if (this.engine.Frame.WatchlistChanged)
         {
             this.config.Save();
@@ -272,7 +276,6 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         }
 
         this.TotalStats.Record(nowMs, Stopwatch.GetElapsedTime(started).TotalMicroseconds);
-        this.AllocBytesLastPoll = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
     }
 
     /// <summary>"No target" is 0xE0000000 in the hard target field and 0 in the look-at field; both fold to 0.</summary>
