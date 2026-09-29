@@ -23,6 +23,7 @@ public sealed class DebugTab
         Row("State", this.sampler.Stopped ? $"stopped: {this.sampler.StopReason}" : this.sampler.GateReason);
         Row("Poll cost (total)", Cost(this.sampler.TotalStats));
         Row("Poll cost (engine)", Cost(this.engine.Stats));
+        Row("Allocated per poll", $"{this.sampler.AllocBytesLastPoll} bytes (0 expected in steady state)");
         Row("Loaded players", this.engine.Frame.LoadedPlayers.ToString());
         Row("Cached names", this.sampler.NameCacheCount.ToString());
         Row("Subjects", this.engine.Frame.Subjects.Count.ToString());

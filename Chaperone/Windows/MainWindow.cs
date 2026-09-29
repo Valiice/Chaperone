@@ -39,6 +39,7 @@ public sealed class MainWindow : Window
     private readonly Configuration config;
     private readonly ChaperoneEngine engine;
     private readonly ObjectTableSampler sampler;
+    private readonly RowTextCache rowText = new();
     private ulong? previousFocus;
 
     public MainWindow(Configuration config, ChaperoneEngine engine, ObjectTableSampler sampler, Action openSettings)
@@ -103,26 +104,20 @@ public sealed class MainWindow : Window
 
         var height = ImGui.GetContentRegionAvail().Y - ImGui.GetStyle().ItemSpacing.Y;
         var anyHovered = false;
+        this.rowText.BeginFrame(this.config.ShowTimestamps);
         if (ImGui.BeginListBox("##chaperoneList", new Vector2(-1, height)))
         {
-            // Live rows across every subject first, then history rows, greyed.
+            // Live rows across every subject first, then history rows, greyed. Row strings are
+            // cached per (subject, targeter) so a rendered frame allocates nothing while the
+            // frame is unchanged.
             for (var s = 0; s < frame.Subjects.Count; s++)
             {
                 var view = frame.Subjects[s];
                 for (var i = 0; i < view.Live.Count; i++)
                 {
                     var row = view.Live[i];
-                    var right = this.config.ShowTimestamps ? $"{view.Name} {FormatClock(row.StartedMs, frame.NowMs)}" : view.Name;
-                    this.DrawRow(
-                        $"{row.Name}##{view.Key.Value}-{row.Key.Value}",
-                        row.Mutual ? "mutual" : "",
-                        right,
-                        row.Name,
-                        row.WorldId,
-                        row.ObjectIndex,
-                        row.GameObjectId,
-                        disabled: false,
-                        ref anyHovered);
+                    var text = this.rowText.Get(view, row.Key, row.Name, row.StartedMs, frame.NowMs, history: false);
+                    this.DrawRow(text.Label, row.Mutual ? "mutual" : "", text.Right, row.Name, row.WorldId, row.ObjectIndex, row.GameObjectId, disabled: false, ref anyHovered);
                 }
             }
 
@@ -132,24 +127,96 @@ public sealed class MainWindow : Window
                 for (var i = 0; i < view.History.Count; i++)
                 {
                     var h = view.History[i];
-                    var right = this.config.ShowTimestamps ? $"{view.Name} {FormatClock(h.LastSeenMs, frame.NowMs)}" : view.Name;
-                    this.DrawRow(
-                        $"{h.Name}##{view.Key.Value}-h{h.Targeter.Value}",
-                        "",
-                        right,
-                        h.Name,
-                        h.WorldId,
-                        -1,
-                        h.LastGameObjectId,
-                        disabled: true,
-                        ref anyHovered);
+                    var text = this.rowText.Get(view, h.Targeter, h.Name, h.LastSeenMs, frame.NowMs, history: true);
+                    this.DrawRow(text.Label, "", text.Right, h.Name, h.WorldId, -1, h.LastGameObjectId, disabled: true, ref anyHovered);
                 }
             }
 
             ImGui.EndListBox();
         }
 
+        this.rowText.EndFrame();
         this.RestoreFocus(anyHovered);
+    }
+
+    /// <summary>
+    /// Caches the label and right-hand text of each row. ImGui needs a unique label per row and
+    /// the clock text only changes when the row's timestamp does, so both are built once and
+    /// reused until the row disappears for a while.
+    /// </summary>
+    private sealed class RowTextCache
+    {
+        private const int PruneEveryFrames = 600;
+
+        private readonly Dictionary<(ulong Subject, ulong Targeter, bool History), Entry> entries = new();
+        private readonly List<(ulong, ulong, bool)> scratch = new();
+        private int frameCounter;
+        private bool showTimes;
+
+        public void BeginFrame(bool showTimestamps)
+        {
+            this.frameCounter++;
+            if (showTimestamps != this.showTimes)
+            {
+                this.showTimes = showTimestamps;
+                this.entries.Clear();
+            }
+        }
+
+        public Entry Get(SubjectView view, PlayerKey targeter, string name, long stampMs, long nowMs, bool history)
+        {
+            var key = (view.Key.Value, targeter.Value, history);
+            var dayOld = nowMs - stampMs >= 86_400_000;
+            if (!this.entries.TryGetValue(key, out var entry))
+            {
+                entry = new Entry();
+                this.entries[key] = entry;
+            }
+
+            if (entry.StampMs != stampMs || entry.DayOld != dayOld || !ReferenceEquals(entry.SubjectName, view.Name))
+            {
+                entry.StampMs = stampMs;
+                entry.DayOld = dayOld;
+                entry.SubjectName = view.Name;
+                entry.Label = history ? $"{name}##{key.Item1}-h{key.Item2}" : $"{name}##{key.Item1}-{key.Item2}";
+                entry.Right = this.showTimes ? $"{view.Name} {FormatClock(stampMs, nowMs)}" : view.Name;
+            }
+
+            entry.LastFrame = this.frameCounter;
+            return entry;
+        }
+
+        public void EndFrame()
+        {
+            if (this.frameCounter % PruneEveryFrames != 0)
+            {
+                return;
+            }
+
+            this.scratch.Clear();
+            foreach (var (key, entry) in this.entries)
+            {
+                if (this.frameCounter - entry.LastFrame > PruneEveryFrames)
+                {
+                    this.scratch.Add(key);
+                }
+            }
+
+            for (var i = 0; i < this.scratch.Count; i++)
+            {
+                this.entries.Remove(this.scratch[i]);
+            }
+        }
+
+        public sealed class Entry
+        {
+            public string Label = "";
+            public string Right = "";
+            public string SubjectName = "";
+            public long StampMs = long.MinValue;
+            public bool DayOld;
+            public int LastFrame;
+        }
     }
 
     private static bool HasRows(Frame frame)

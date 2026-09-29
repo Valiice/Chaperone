@@ -9,6 +9,9 @@ public sealed class Frame
     public int LivePairs;
     public long NowMs;
 
+    /// <summary>Increments whenever the frame changes (poll or reset), so readers can skip unchanged frames.</summary>
+    public int Sequence;
+
     /// <summary>True when a watched entry learned its content id this poll; the plugin saves config.</summary>
     public bool WatchlistChanged;
 }

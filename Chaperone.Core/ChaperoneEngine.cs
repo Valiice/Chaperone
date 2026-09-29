@@ -63,6 +63,7 @@ public sealed class ChaperoneEngine
         this.FillRows();
 
         frame.LivePairs = this.tracker.Live.Count;
+        frame.Sequence++;
         this.Stats.Record(now, Stopwatch.GetElapsedTime(started).TotalMicroseconds);
     }
 
@@ -79,6 +80,7 @@ public sealed class ChaperoneEngine
         this.Frame.Subjects.Clear();
         this.Frame.Alerts.Clear();
         this.Frame.LivePairs = 0;
+        this.Frame.Sequence++;
     }
 
     /// <summary>A friend was removed from the watchlist.</summary>

@@ -18,6 +18,7 @@ public sealed unsafe class ObjectTableSampler : IDisposable
 {
     private const ulong NoTargetObjectId = 0xE0000000;
     private const int MaxConsecutiveFailures = 5;
+    private const int PlayerSlotEnd = 200;
 
     private static readonly ConditionFlag[] PauseConditions =
     [
@@ -55,6 +56,9 @@ public sealed unsafe class ObjectTableSampler : IDisposable
     public PollStats TotalStats { get; } = new();
 
     public int NameCacheCount => this.names.Count;
+
+    /// <summary>Managed bytes allocated on the framework thread during the last running poll. Should sit at 0.</summary>
+    public long AllocBytesLastPoll { get; private set; }
 
     public ulong DebugTargetHardId { get; private set; }
 
@@ -170,6 +174,7 @@ public sealed unsafe class ObjectTableSampler : IDisposable
 
         this.GateReason = "running";
         var started = Stopwatch.GetTimestamp();
+        var allocBefore = GC.GetAllocatedBytesForCurrentThread();
 
         var localChar = (Character*)local.Address;
         var localHomeWorld = localChar->HomeWorld;
@@ -184,9 +189,11 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         this.DebugTargetHardId = 0;
         this.DebugTargetLookAtId = 0;
 
-        foreach (var obj in Services.ObjectTable.PlayerObjects)
+        // Player characters occupy the even slots 0..198. Indexing the table directly reuses the
+        // per-slot wrapper objects; PlayerObjects would allocate an iterator every poll.
+        for (var slot = 0; slot < PlayerSlotEnd; slot += 2)
         {
-            if (obj is not IPlayerCharacter pc)
+            if (Services.ObjectTable[slot] is not IPlayerCharacter pc)
             {
                 continue;
             }
@@ -265,6 +272,7 @@ public sealed unsafe class ObjectTableSampler : IDisposable
         }
 
         this.TotalStats.Record(nowMs, Stopwatch.GetElapsedTime(started).TotalMicroseconds);
+        this.AllocBytesLastPoll = GC.GetAllocatedBytesForCurrentThread() - allocBefore;
     }
 
     /// <summary>"No target" is 0xE0000000 in the hard target field and 0 in the look-at field; both fold to 0.</summary>

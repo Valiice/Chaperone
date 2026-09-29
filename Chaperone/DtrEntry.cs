@@ -10,6 +10,7 @@ public sealed class DtrEntry : IDisposable
     private readonly ChaperoneEngine engine;
     private readonly IDtrBarEntry entry;
     private int lastCount = -1;
+    private int lastSequence = -1;
     private bool lastShown;
 
     public DtrEntry(Configuration config, ChaperoneEngine engine, Action onClick)
@@ -37,8 +38,16 @@ public sealed class DtrEntry : IDisposable
             return;
         }
 
+        // The frame only changes on a poll, so recount only then, not every rendered frame.
+        var frame = this.engine.Frame;
+        if (frame.Sequence == this.lastSequence)
+        {
+            return;
+        }
+
+        this.lastSequence = frame.Sequence;
         var count = 0;
-        var subjects = this.engine.Frame.Subjects;
+        var subjects = frame.Subjects;
         for (var i = 0; i < subjects.Count; i++)
         {
             if (subjects[i].IsWatched)

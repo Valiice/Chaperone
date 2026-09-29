@@ -47,12 +47,24 @@ public sealed class WorldMarkers : IDisposable
         }
 
         var subjects = this.engine.Frame.Subjects;
+        if (subjects.Count == 0)
+        {
+            return;
+        }
+
+        // One clip rect for every marker this frame, not one push and pop per circle.
+        var drawList = ImGui.GetBackgroundDrawList();
+        var viewport = ImGuiHelpers.MainViewport;
+        drawList.PushClipRect(viewport.Pos, viewport.Pos + viewport.Size, false);
+
+        var friendColour = ImGui.GetColorU32(this.config.FriendColour);
+        var targeterColour = ImGui.GetColorU32(this.config.TargeterColour);
         for (var s = 0; s < subjects.Count; s++)
         {
             var view = subjects[s];
             if (this.config.MarkFriends && view.IsWatched && view.IsNearby)
             {
-                Mark(ObjectLookup.Resolve(view.ObjectIndex, view.GameObjectId), this.config.FriendColour, this.config.FriendSize);
+                Mark(drawList, ObjectLookup.Resolve(view.ObjectIndex, view.GameObjectId), friendColour, this.config.FriendSize);
             }
 
             if (!this.config.MarkTargeters)
@@ -63,22 +75,20 @@ public sealed class WorldMarkers : IDisposable
             for (var r = 0; r < view.Live.Count; r++)
             {
                 var row = view.Live[r];
-                Mark(ObjectLookup.Resolve(row.ObjectIndex, row.GameObjectId), this.config.TargeterColour, this.config.TargeterSize);
+                Mark(drawList, ObjectLookup.Resolve(row.ObjectIndex, row.GameObjectId), targeterColour, this.config.TargeterSize);
             }
         }
+
+        drawList.PopClipRect();
     }
 
-    private static void Mark(IGameObject? obj, Vector4 colour, float size)
+    private static void Mark(ImDrawListPtr drawList, IGameObject? obj, uint colour, float size)
     {
         if (obj == null || !Services.GameGui.WorldToScreen(obj.Position, out var screen))
         {
             return;
         }
 
-        var drawList = ImGui.GetBackgroundDrawList();
-        var viewport = ImGuiHelpers.MainViewport;
-        drawList.PushClipRect(viewport.Pos, viewport.Pos + viewport.Size, false);
-        drawList.AddCircleFilled(screen, size, ImGui.GetColorU32(colour), 32);
-        drawList.PopClipRect();
+        drawList.AddCircleFilled(screen, size, colour, 32);
     }
 }
