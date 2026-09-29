@@ -23,7 +23,7 @@ public class Configuration : IPluginConfiguration, IDisposable
     /// <summary>Held by every Watchlist mutation and by Flush, which serializes the list on another thread.</summary>
     [NonSerialized] internal readonly object WatchlistLock = new();
 
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
 
     public List<WatchlistEntry> Watchlist { get; set; } = [];
 
@@ -39,7 +39,7 @@ public class Configuration : IPluginConfiguration, IDisposable
     public int GlobalFloorSeconds { get; set; } = 2;
     public bool AlertInCombat { get; set; }
     public bool LogSelf { get; set; }
-    public bool ChatAlerts { get; set; } = true;
+    public bool ChatAlerts { get; set; }
     public bool SoundAlerts { get; set; } = true;
     public int SoundId { get; set; } = 6;
     public bool NotificationAlerts { get; set; }
@@ -71,6 +71,15 @@ public class Configuration : IPluginConfiguration, IDisposable
     {
         var config = pluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         config.Watchlist ??= [];
+
+        // Version 2: chat alerts default off. Configs saved by version 1 had them on.
+        if (config.Version < 2)
+        {
+            config.ChatAlerts = false;
+            config.Version = 2;
+            config.Save();
+        }
+
         config.Clamp();
         return config;
     }

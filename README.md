@@ -14,7 +14,7 @@ Not on the official repo. Alternatively, build with `dotnet build` and load as a
 
 ## Usage
 
-Open the window with `/chaperone`. Each watched friend gets a header with the number of people currently targeting them. Rows underneath are the targeters, with how long they have been targeting. Greyed rows are people who targeted them earlier this session.
+Open the window with `/chaperone`. Each row is one person who is targeting someone you watch: their name on the left, and on the right who they are targeting and for how long. A "mutual" tag means the watched person is targeting them back. Greyed rows are people who stopped, with how long ago. Watched friends who nobody is targeting do not take up space.
 
 Row controls, same as PeepingTom:
 
@@ -34,7 +34,7 @@ Other commands: `/chaperone remove First Last@World`, `/chaperone list`, `/chape
 
 ## Alerts
 
-An alert fires once someone has held a watched friend targeted for the configured time (3 seconds by default), then not again for that pair for a minute. Alerts go to chat with a clickable name, play a chat sound effect of your choice, and can optionally show a Dalamud notification.
+An alert fires once someone has held a watched friend targeted for the configured time (3 seconds by default), then not again for that pair for a minute. By default an alert plays a chat sound effect of your choice. A chat line with a clickable name and a Dalamud notification are both available as options.
 
 By default these people never trigger alerts, only rows in the window: your party and alliance, your friend list, your free company, and other players on your watchlist. Each is a toggle in the Filters tab. Targeters in combat are ignored unless you turn that on.
 
