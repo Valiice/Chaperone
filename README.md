@@ -14,7 +14,7 @@ Not on the official repo. Alternatively, build with `dotnet build` and load as a
 
 ## Usage
 
-Open the window with `/chaperone`. Each row is one person who is targeting someone you watch: their name on the left, and on the right who they are targeting and for how long. A "mutual" tag means the watched person is targeting them back. Greyed rows are people who stopped, with how long ago. Watched friends who nobody is targeting do not take up space.
+Open the window with `/chaperone`. Each row is one person who is targeting someone you watch: their name on the left, and on the right who they are targeting and the time it started. A "mutual" tag means the watched person is targeting them back. Greyed rows are people who stopped, with the time they stopped. Watched friends who nobody is targeting do not take up space.
 
 Row controls, same as PeepingTom:
 

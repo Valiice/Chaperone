@@ -373,6 +373,7 @@ public sealed class ChaperoneEngine
                 GameObjectId = pair.TargeterGameObjectId,
                 ObjectIndex = -1,
                 DwellSeconds = pair.DwellSeconds,
+                StartedMs = pair.StartedMs,
                 LastSeenMs = pair.LastSeenMs,
                 Alerted = pair.Alerted,
                 Flags = pair.Flags,

@@ -9,6 +9,7 @@ public struct TargeterRow
     public ulong GameObjectId;
     public int ObjectIndex;
     public double DwellSeconds;
+    public long StartedMs;
     public long LastSeenMs;
     public bool Alerted;
     public ObservationFlags Flags;

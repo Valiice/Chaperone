@@ -13,8 +13,8 @@ namespace Chaperone.Windows;
 
 /// <summary>
 /// The compact list: one row per person targeting someone you watch (or your current target).
-/// Left is the targeter, right is who they are targeting and for how long. Ended targetings stay
-/// as greyed rows with how long ago they stopped. Draws only from the engine's cached frame. Row
+/// Left is the targeter, right is who they are targeting and the time it started. Ended targetings
+/// stay as greyed rows with the time they stopped. Draws only from the engine's cached frame. Row
 /// interactions mirror PeepingTom: hover focuses, left click links to chat, right click targets,
 /// Alt+click examines.
 /// </summary>
@@ -112,7 +112,7 @@ public sealed class MainWindow : Window
                 for (var i = 0; i < view.Live.Count; i++)
                 {
                     var row = view.Live[i];
-                    var right = this.config.ShowTimestamps ? $"{view.Name} {RelativeTime.Dwell(row.DwellSeconds)}" : view.Name;
+                    var right = this.config.ShowTimestamps ? $"{view.Name} {FormatClock(row.StartedMs, frame.NowMs)}" : view.Name;
                     this.DrawRow(
                         $"{row.Name}##{view.Key.Value}-{row.Key.Value}",
                         row.Mutual ? "mutual" : "",
@@ -132,7 +132,7 @@ public sealed class MainWindow : Window
                 for (var i = 0; i < view.History.Count; i++)
                 {
                     var h = view.History[i];
-                    var right = this.config.ShowTimestamps ? $"{view.Name} {RelativeTime.Ago(frame.NowMs - h.LastSeenMs)}" : view.Name;
+                    var right = this.config.ShowTimestamps ? $"{view.Name} {FormatClock(h.LastSeenMs, frame.NowMs)}" : view.Name;
                     this.DrawRow(
                         $"{h.Name}##{view.Key.Value}-h{h.Targeter.Value}",
                         "",
@@ -231,6 +231,13 @@ public sealed class MainWindow : Window
         {
             Services.TargetManager.Target = obj;
         }
+    }
+
+    /// <summary>Local clock time like PeepingTom: "03:23", or "dd/MM" once it is a day old.</summary>
+    private static string FormatClock(long unixMs, long nowMs)
+    {
+        var local = DateTimeOffset.FromUnixTimeMilliseconds(unixMs).ToLocalTime();
+        return nowMs - unixMs >= 86_400_000 ? local.ToString("dd/MM") : local.ToString("HH:mm");
     }
 
     private void RestoreFocus(bool anyHovered)
