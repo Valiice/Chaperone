@@ -66,6 +66,33 @@ public class ChaperoneEngineTests
         new(new EngineSettings { Policy = new PolicySettings { DwellThresholdSeconds = threshold, GlobalFloorSeconds = floor } });
 
     [Fact]
+    public void RowIsMutualWhenTheSubjectTargetsBack()
+    {
+        var engine = Engine(threshold: 100);
+        var list = new List<WatchlistEntry> { Entry("Some Friend", 5, 555) };
+        var snap = new Snapshot();
+
+        Fill(snap, 0);
+        Add(snap, 20, "Some Friend", 5, contentId: 555, target: 30);
+        Add(snap, 30, "Some Stranger", 7, target: 20);
+        Add(snap, 31, "Other Stranger", 7, target: 20);
+        engine.Poll(snap, list);
+
+        var view = Assert.Single(engine.Frame.Subjects);
+        Assert.Equal(2, view.Live.Count);
+        var mutual = view.Live.Find(r => r.Name == "Some Stranger");
+        var oneWay = view.Live.Find(r => r.Name == "Other Stranger");
+        Assert.True(mutual.Mutual);
+        Assert.False(oneWay.Mutual);
+
+        Fill(snap, 200);
+        Add(snap, 20, "Some Friend", 5, contentId: 555);
+        Add(snap, 30, "Some Stranger", 7, target: 20);
+        engine.Poll(snap, list);
+        Assert.False(engine.Frame.Subjects[0].Live[0].Mutual);
+    }
+
+    [Fact]
     public void StrangerTargetingFriendShowsRowThenAlertsAtThreshold()
     {
         var engine = Engine();

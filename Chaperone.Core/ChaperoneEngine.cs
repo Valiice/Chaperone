@@ -392,8 +392,12 @@ public sealed class ChaperoneEngine
                 if (this.byGameObjectId.TryGetValue(row.GameObjectId, out var idx))
                 {
                     row.ObjectIndex = this.lastSnapshot!.Players[idx].ObjectIndex;
-                    view.Live[r] = row;
                 }
+
+                // Mutual: the subject's own hard target is this targeter.
+                row.Mutual = this.byGameObjectId.TryGetValue(view.GameObjectId, out var subjectIdx)
+                    && this.lastSnapshot!.Players[subjectIdx].HardTargetId == row.GameObjectId;
+                view.Live[r] = row;
             }
         }
     }

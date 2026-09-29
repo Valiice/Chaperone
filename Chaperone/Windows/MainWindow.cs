@@ -3,7 +3,6 @@ using Chaperone.Core;
 using Chaperone.Sensors;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text.SeStringHandling;
 using Dalamud.Game.Text.SeStringHandling.Payloads;
 using Dalamud.Interface;
@@ -13,9 +12,11 @@ using FFXIVClientStructs.FFXIV.Client.UI.Agent;
 namespace Chaperone.Windows;
 
 /// <summary>
-/// The compact list: one header per subject, live targeter rows under it, greyed history rows
-/// below those. Draws only from the engine's cached frame. Row interactions mirror PeepingTom:
-/// hover focuses, left click links to chat, right click targets, Alt+click examines.
+/// The compact list: one row per person targeting someone you watch (or your current target).
+/// Left is the targeter, right is who they are targeting and for how long. Ended targetings stay
+/// as greyed rows with how long ago they stopped. Draws only from the engine's cached frame. Row
+/// interactions mirror PeepingTom: hover focuses, left click links to chat, right click targets,
+/// Alt+click examines.
 /// </summary>
 public sealed class MainWindow : Window
 {
@@ -46,9 +47,9 @@ public sealed class MainWindow : Window
         this.config = config;
         this.engine = engine;
         this.sampler = sampler;
-        this.Size = new Vector2(300, 220);
+        this.Size = new Vector2(320, 200);
         this.SizeCondition = ImGuiCond.FirstUseEver;
-        this.SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(220, 120) };
+        this.SizeConstraints = new WindowSizeConstraints { MinimumSize = new Vector2(240, 100) };
         this.TitleBarButtons.Add(new TitleBarButton
         {
             Icon = FontAwesomeIcon.Cog,
@@ -94,10 +95,9 @@ public sealed class MainWindow : Window
         }
 
         var frame = this.engine.Frame;
-        if (frame.Subjects.Count == 0)
+        if (!HasRows(frame))
         {
-            ImGui.TextDisabled("Nothing to watch.");
-            ImGui.TextDisabled("Add friends in settings, or target someone.");
+            ImGui.TextDisabled("Nobody is targeting your watched players.");
             this.RestoreFocus(false);
             return;
         }
@@ -106,17 +106,44 @@ public sealed class MainWindow : Window
         var anyHovered = false;
         if (ImGui.BeginListBox("##chaperoneList", new Vector2(-1, height)))
         {
-            // Nearby subjects first, then friends not currently loaded, greyed, at the bottom.
-            for (var pass = 0; pass < 2; pass++)
+            // Live rows across every subject first, then history rows, greyed.
+            for (var s = 0; s < frame.Subjects.Count; s++)
             {
-                var nearby = pass == 0;
-                for (var s = 0; s < frame.Subjects.Count; s++)
+                var view = frame.Subjects[s];
+                for (var i = 0; i < view.Live.Count; i++)
                 {
-                    var view = frame.Subjects[s];
-                    if (view.IsNearby == nearby)
-                    {
-                        this.DrawSubject(view, frame.NowMs, ref anyHovered);
-                    }
+                    var row = view.Live[i];
+                    var right = this.config.ShowTimestamps ? $"{view.Name} {RelativeTime.Dwell(row.DwellSeconds)}" : view.Name;
+                    this.DrawRow(
+                        $"{row.Name}##{view.Key.Value}-{row.Key.Value}",
+                        row.Mutual ? "mutual" : "",
+                        right,
+                        row.Name,
+                        row.WorldId,
+                        row.ObjectIndex,
+                        row.GameObjectId,
+                        disabled: false,
+                        ref anyHovered);
+                }
+            }
+
+            for (var s = 0; s < frame.Subjects.Count; s++)
+            {
+                var view = frame.Subjects[s];
+                for (var i = 0; i < view.History.Count; i++)
+                {
+                    var h = view.History[i];
+                    var right = this.config.ShowTimestamps ? $"{view.Name} {RelativeTime.Ago(frame.NowMs - h.LastSeenMs)}" : view.Name;
+                    this.DrawRow(
+                        $"{h.Name}##{view.Key.Value}-h{h.Targeter.Value}",
+                        "",
+                        right,
+                        h.Name,
+                        h.WorldId,
+                        -1,
+                        h.LastGameObjectId,
+                        disabled: true,
+                        ref anyHovered);
                 }
             }
 
@@ -126,60 +153,35 @@ public sealed class MainWindow : Window
         this.RestoreFocus(anyHovered);
     }
 
-    private void DrawSubject(SubjectView view, long nowMs, ref bool anyHovered)
+    private static bool HasRows(Frame frame)
     {
-        if (view.IsNearby)
+        for (var s = 0; s < frame.Subjects.Count; s++)
         {
-            ImGui.TextUnformatted(view.Name);
-        }
-        else
-        {
-            ImGui.TextDisabled(view.Name);
-        }
-
-        if (view.IsCurrentTarget)
-        {
-            ImGui.SameLine();
-            ImGui.TextDisabled("(your target)");
+            var view = frame.Subjects[s];
+            if (view.Live.Count > 0 || view.History.Count > 0)
+            {
+                return true;
+            }
         }
 
-        var right = view.IsNearby ? (view.Live.Count == 0 ? "" : view.Live.Count.ToString()) : "not nearby";
-        if (right.Length > 0)
-        {
-            var width = ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X;
-            ImGui.SameLine(width - ImGui.CalcTextSize(right).X);
-            ImGui.TextDisabled(right);
-        }
-
-        ImGui.Indent();
-        for (var i = 0; i < view.Live.Count; i++)
-        {
-            var row = view.Live[i];
-            var timeText = this.config.ShowTimestamps ? $"{row.DwellSeconds:0}s" : "";
-            this.DrawRow($"{row.Name}##{view.Key.Value}-{row.Key.Value}", timeText, row.Name, row.WorldId, row.ObjectIndex, row.GameObjectId, disabled: false, ref anyHovered);
-        }
-
-        for (var i = 0; i < view.History.Count; i++)
-        {
-            var h = view.History[i];
-            var timeText = this.config.ShowTimestamps ? FormatWhen(h.LastSeenMs, nowMs) : "";
-            this.DrawRow($"{h.Name}##{view.Key.Value}-h{h.Targeter.Value}", timeText, h.Name, h.WorldId, -1, h.LastGameObjectId, disabled: true, ref anyHovered);
-        }
-
-        ImGui.Unindent();
+        return false;
     }
 
-    private void DrawRow(string label, string timeText, string name, uint worldId, int objectIndex, ulong gameObjectId, bool disabled, ref bool anyHovered)
+    private void DrawRow(string label, string tag, string rightText, string name, uint worldId, int objectIndex, ulong gameObjectId, bool disabled, ref bool anyHovered)
     {
         ImGui.BeginGroup();
         ImGui.Selectable(label, false, disabled ? ImGuiSelectableFlags.Disabled : ImGuiSelectableFlags.None);
-        if (timeText.Length > 0)
+        if (tag.Length > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(tag);
+        }
+
+        if (rightText.Length > 0)
         {
             var width = ImGui.GetWindowContentRegionMax().X - ImGui.GetWindowContentRegionMin().X;
-            ImGui.SameLine(width - ImGui.CalcTextSize(timeText).X);
-            if (disabled) ImGui.PushStyleColor(ImGuiCol.Text, ImGui.GetStyle().Colors[(int)ImGuiCol.TextDisabled]);
-            ImGui.TextUnformatted(timeText);
-            if (disabled) ImGui.PopStyleColor();
+            ImGui.SameLine(width - ImGui.CalcTextSize(rightText).X);
+            ImGui.TextDisabled(rightText);
         }
 
         ImGui.EndGroup();
@@ -241,11 +243,5 @@ public sealed class MainWindow : Window
 
         Services.TargetManager.FocusTarget = previous == ulong.MaxValue ? null : Services.ObjectTable.SearchById(previous);
         this.previousFocus = null;
-    }
-
-    private static string FormatWhen(long thenMs, long nowMs)
-    {
-        var then = DateTimeOffset.FromUnixTimeMilliseconds(thenMs).ToLocalTime();
-        return nowMs - thenMs >= 86_400_000 ? then.ToString("dd/MM") : then.ToString("t");
     }
 }

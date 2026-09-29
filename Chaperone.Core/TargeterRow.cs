@@ -12,4 +12,7 @@ public struct TargeterRow
     public long LastSeenMs;
     public bool Alerted;
     public ObservationFlags Flags;
+
+    /// <summary>True when the subject is targeting this targeter back.</summary>
+    public bool Mutual;
 }
