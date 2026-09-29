@@ -97,7 +97,6 @@ public sealed class MainWindow : Window
         var frame = this.engine.Frame;
         if (!HasRows(frame))
         {
-            ImGui.TextDisabled("Nobody is targeting your watched players.");
             this.RestoreFocus(false);
             return;
         }
