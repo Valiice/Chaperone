@@ -23,6 +23,7 @@ public sealed class MainWindow : Window
     private const long DayMs = 86_400_000;
 
     private static readonly Vector4 Red = new(1f, 0.35f, 0.35f, 1f);
+    private static readonly Vector4 Mutual = new(0.55f, 0.95f, 0.55f, 1f);
 
     private static readonly ConditionFlag[] DutyConditions =
     [
@@ -119,7 +120,7 @@ public sealed class MainWindow : Window
                 {
                     var row = view.Live[i];
                     var text = this.rowText.Get(view, row.Key, row.Name, row.StartedMs, frame.NowMs, history: false);
-                    this.DrawRow(text.Label, row.Mutual ? "mutual" : "", text.Right, row.Name, row.WorldId, row.ObjectIndex, row.GameObjectId, disabled: false, ref anyHovered);
+                    this.DrawRow(text.Label, row.Mutual, text.Right, row.Name, row.WorldId, row.ObjectIndex, row.GameObjectId, disabled: false, ref anyHovered);
                 }
             }
 
@@ -130,7 +131,7 @@ public sealed class MainWindow : Window
                 {
                     var h = view.History[i];
                     var text = this.rowText.Get(view, h.Targeter, h.Name, h.LastSeenMs, frame.NowMs, history: true);
-                    this.DrawRow(text.Label, "", text.Right, h.Name, h.WorldId, -1, h.LastGameObjectId, disabled: true, ref anyHovered);
+                    this.DrawRow(text.Label, false, text.Right, h.Name, h.WorldId, -1, h.LastGameObjectId, disabled: true, ref anyHovered);
                 }
             }
 
@@ -232,15 +233,14 @@ public sealed class MainWindow : Window
         return false;
     }
 
-    private void DrawRow(string label, string tag, string rightText, string name, uint worldId, int objectIndex, ulong gameObjectId, bool disabled, ref bool anyHovered)
+    private void DrawRow(string label, bool mutual, string rightText, string name, uint worldId, int objectIndex, ulong gameObjectId, bool disabled, ref bool anyHovered)
     {
         ImGui.BeginGroup();
+
+        // Mutual targeting is shown by colouring the name, so it costs no horizontal space.
+        if (mutual) ImGui.PushStyleColor(ImGuiCol.Text, Mutual);
         ImGui.Selectable(label, false, disabled ? ImGuiSelectableFlags.Disabled : ImGuiSelectableFlags.None);
-        if (tag.Length > 0)
-        {
-            ImGui.SameLine();
-            ImGui.TextDisabled(tag);
-        }
+        if (mutual) ImGui.PopStyleColor();
 
         if (rightText.Length > 0)
         {
